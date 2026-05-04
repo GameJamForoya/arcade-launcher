@@ -10,6 +10,9 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 
+# Claude Code local settings
+/.claude/
+
 # MemoryCaptures
 /[Mm]emoryCaptures/
 
@@ -81,3 +84,8 @@ crashlytics-build.properties
 # Plastic SCM (Ignore Plastic SCM internal directory)
 .plastic/
 .plastic*.meta
+
+# Local debug screenshots from MCP/play-mode capture (placed last so the
+# Assets/**/*.meta negation above doesn't re-include the Screenshots folder).
+/[Aa]ssets/[Ss]creenshots/
+/[Aa]ssets/[Ss]creenshots.meta
