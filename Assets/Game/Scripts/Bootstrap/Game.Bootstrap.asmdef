@@ -1,0 +1,17 @@
+{
+    "name": "Game.Bootstrap",
+    "rootNamespace": "ArcadeLauncher.Bootstrap",
+    "references": [
+        "Game.Core",
+        "Game.Sources"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
