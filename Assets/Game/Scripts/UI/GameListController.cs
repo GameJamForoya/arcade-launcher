@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using ArcadeLauncher.Core;
 using TMPro;
 using UnityEngine;
@@ -183,10 +184,65 @@ namespace ArcadeLauncher.UI
             }
         }
 
-        void OnItemSubmitted(GameEntry entry)
+        async void OnItemSubmitted(GameEntry entry)
         {
-            // TODO: hand off to GameLaunchController in a later phase
-            Debug.Log($"[GameListController] Submitted: {entry.Title}");
+            if (entry == null) return;
+
+            if (!ServiceLocator.TryGet<IGameLauncher>(out var launcher))
+            {
+                Debug.LogError("[GameListController] No IGameLauncher registered.");
+                return;
+            }
+
+            var executablePath = ResolveExecutablePath(entry);
+            if (string.IsNullOrEmpty(executablePath))
+            {
+                Debug.LogWarning($"[GameListController] {entry.Title}: cannot resolve executable path. Set executableName + localFolder (or place the game at <gamesRoot>/{entry.Id}/).");
+                return;
+            }
+            if (!launcher.CanLaunch(executablePath))
+            {
+                Debug.LogWarning($"[GameListController] {entry.Title}: launcher refused {executablePath} (file missing or unsupported).");
+                return;
+            }
+
+            Debug.Log($"[GameListController] Launching {entry.Title} → {executablePath}");
+            try
+            {
+                var process = await launcher.LaunchAsync(executablePath, new LaunchOptions
+                {
+                    WorkingDirectory = Path.GetDirectoryName(executablePath),
+                    FullScreen = true,
+                });
+
+                await process.WaitForExitAsync();
+                Debug.Log($"[GameListController] {entry.Title} exited.");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[GameListController] Failed to launch {entry.Title}: {ex.Message}");
+            }
+        }
+
+        static string ResolveExecutablePath(GameEntry entry)
+        {
+            if (string.IsNullOrEmpty(entry.ExecutableName)) return null;
+
+            string folder;
+            if (!string.IsNullOrEmpty(entry.LocalFolder))
+            {
+                folder = entry.LocalFolder;
+            }
+            else if (ServiceLocator.TryGet<GamesRootPath>(out var root))
+            {
+                folder = Path.Combine(root.Path, entry.Id ?? "");
+            }
+            else
+            {
+                return null;
+            }
+
+            return Path.Combine(folder, entry.ExecutableName);
         }
     }
 }

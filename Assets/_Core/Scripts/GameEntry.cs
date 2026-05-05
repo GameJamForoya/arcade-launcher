@@ -24,6 +24,7 @@ namespace ArcadeLauncher.Core
         [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
         [JsonProperty("pageUrl")] public string PageUrl { get; set; }
         [JsonProperty("executableName")] public string ExecutableName { get; set; }
+        [JsonProperty("localFolder")]    public string LocalFolder { get; set; }
         [JsonIgnore] public GameSourceType Source { get; set; }
     }
 }
