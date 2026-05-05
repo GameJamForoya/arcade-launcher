@@ -1,17 +1,17 @@
 {
   "games": [
     {
-      "id": "trolls-escape",
-      "title": "Troll's Escape",
-      "developer": "Team Nykur",
-      "jamYear": 2024,
-      "jamName": "GameJam Føroyar 2024",
-      "description": "Help a mischievous troll navigate the cliffs of Mykines before sunrise. A platformer with Faroese folklore at its heart.",
+      "id": "gluttonography",
+      "title": "Gluttonography",
+      "developer": "Petur",
+      "jamYear": 2026,
+      "jamName": "Tonik GameJam 2026",
+      "description": "A mysterious dog has appeared out of nowhere. It looks like it feeds on photographs of food. Interesting.",
       "coverArtUrl": "",
       "screenshotUrls": [],
       "downloadUrl": "",
-      "pageUrl": "https://example.com/trolls-escape",
-      "executableName": "TrollsEscape.exe"
+      "pageUrl": "https://lindev.itch.io/photo",
+      "executableName": "Gluttonography.exe"
     },
     {
       "id": "sheep-herder",

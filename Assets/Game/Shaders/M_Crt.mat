@@ -27,8 +27,8 @@ Material:
     m_Floats:
     - _ChromaticAberration: 0.0025
     - _CornerRadius: 0.04
-    - _Distortion: 0.12
-    - _ScanlineCount: 240
+    - _Distortion: 0.1
+    - _ScanlineCount: 113
     - _ScanlineIntensity: 0.3
     - _Vignette: 0.55
     - _VignetteSoftness: 0.45
