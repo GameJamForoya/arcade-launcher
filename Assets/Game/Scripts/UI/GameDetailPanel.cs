@@ -32,7 +32,11 @@ namespace ArcadeLauncher.UI
 
             if (titleText != null) titleText.text = entry.Title;
             if (developerText != null) developerText.text = string.IsNullOrEmpty(entry.Developer) ? "" : entry.Developer;
-            if (descriptionText != null) descriptionText.text = entry.Description;
+            if (descriptionText != null)
+            {
+                descriptionText.overflowMode = TextOverflowModes.Ellipsis;
+                descriptionText.text = entry.Description;
+            }
             if (playPrompt != null)
             {
                 playPrompt.gameObject.SetActive(true);

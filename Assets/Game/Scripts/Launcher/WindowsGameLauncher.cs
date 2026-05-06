@@ -72,16 +72,26 @@ namespace ArcadeLauncher.Launcher
             if (process == null)
                 throw new InvalidOperationException($"Failed to start process for '{executablePath}'");
 
+            string title = string.IsNullOrEmpty(options?.Title)
+                ? Path.GetFileNameWithoutExtension(executablePath)
+                : options.Title;
+
             Debug.Log($"[WindowsGameLauncher] Launched {Path.GetFileName(executablePath)} (PID {process.Id}) from {workingDir}");
-            return Task.FromResult<IGameProcess>(new ProcessHandle(process));
+            PanicKeyWatcher.Register(process, title);
+            return Task.FromResult<IGameProcess>(new ProcessHandle(process, title));
         }
 
         sealed class ProcessHandle : IGameProcess
         {
             const int PollIntervalMs = 500;
             readonly Process _process;
+            readonly string _title;
 
-            public ProcessHandle(Process process) => _process = process;
+            public ProcessHandle(Process process, string title)
+            {
+                _process = process;
+                _title = title;
+            }
 
             public bool HasExited
             {
@@ -94,10 +104,17 @@ namespace ArcadeLauncher.Launcher
 
             public async Task WaitForExitAsync(CancellationToken ct = default)
             {
-                while (!HasExited)
+                try
                 {
-                    ct.ThrowIfCancellationRequested();
-                    await Task.Delay(PollIntervalMs, ct);
+                    while (!HasExited)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        await Task.Delay(PollIntervalMs, ct);
+                    }
+                }
+                finally
+                {
+                    PanicKeyWatcher.Unregister(_process);
                 }
             }
 
@@ -105,11 +122,11 @@ namespace ArcadeLauncher.Launcher
             {
                 try
                 {
-                    if (!_process.HasExited) _process.Kill();
+                    PanicKeyWatcher.KillProcessTree(_process, _title);
                 }
-                catch (Exception ex)
+                finally
                 {
-                    Debug.LogWarning($"[WindowsGameLauncher] ForceQuit failed: {ex.Message}");
+                    PanicKeyWatcher.Unregister(_process);
                 }
             }
         }

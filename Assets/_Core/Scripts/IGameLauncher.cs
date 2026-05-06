@@ -7,6 +7,7 @@ namespace ArcadeLauncher.Core
     {
         public bool FullScreen { get; set; } = true;
         public string WorkingDirectory { get; set; }
+        public string Title { get; set; }
     }
 
     public interface IGameProcess

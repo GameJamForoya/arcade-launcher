@@ -231,6 +231,7 @@ namespace ArcadeLauncher.UI
                 {
                     WorkingDirectory = Path.GetDirectoryName(executablePath),
                     FullScreen = true,
+                    Title = entry.Title,
                 });
 
                 await process.WaitForExitAsync();
