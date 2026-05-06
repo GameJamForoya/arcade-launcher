@@ -5,13 +5,13 @@
       "title": "Gluttonography",
       "developer": "Petur",
       "jamYear": 2026,
-      "jamName": "Tonik GameJam 2026",
+      "jamName": "Tonik GameJam",
       "description": "A mysterious dog has appeared out of nowhere. It looks like it feeds on photographs of food. Interesting.",
       "coverArtUrl": "",
       "screenshotUrls": [],
       "downloadUrl": "",
       "pageUrl": "https://lindev.itch.io/photo",
-      "executableName": "Gluttonography.exe"
+      "executableName": "game.exe"
     },
     {
       "id": "sheep-herder",
@@ -129,6 +129,45 @@
       "downloadUrl": "",
       "pageUrl": "https://example.com/raven-flight",
       "executableName": "RavenFlight.exe"
+    },
+    {
+      "id": "frame-or-die",
+      "title": "Frame or Die",
+      "developer": "House on Fire & Co",
+      "jamYear": 2026,
+      "jamName": "Tonik GameJam",
+      "description": "The poor little Chick, still in its Egg, fell out of the nest. Move small frames around the big world to manipulate it, allowing Little Egg Chick to get back to the nest.",
+      "coverArtUrl": "CoverArt/frame-or-die",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://itch.io/jam/tonik-gamejam-2026/rate/4538621",
+      "executableName": "FrameOrDie.exe"
+    },
+    {
+      "id": "big-world-rally",
+      "title": "Big World Rally",
+      "developer": "Kristjan G.",
+      "jamYear": 2026,
+      "jamName": "Tonik GameJam",
+      "description": "Requires a controller with triggers, shoulder buttons and analog sticks to play.\n\nRight Trigger: Throttle\n\nLeft Trigger: Brake\n\nLeft Shoulder: Clutch\n\nLeft Stick: Steering\n\nRight Stick: Gear stick (when clutch is pressed)",
+      "coverArtUrl": "CoverArt/big-world-rally",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://itch.io/jam/tonik-gamejam-2026/rate/4537029",
+      "executableName": "bigworldrally.exe"
+    },
+    {
+      "id": "the-undelivered",
+      "title": "The Undelivered",
+      "developer": "JóHannas",
+      "jamYear": 2026,
+      "jamName": "Tonik GameJam",
+      "description": "You are a detective. Across the table sits a suspect. Between you: one small clue — an undelivered letter, a missing package, a stamped envelope with no destination.\n\nThrough conversation alone, you must uncover the big world of crime, cover-ups, and very human secrets hiding behind it.",
+      "coverArtUrl": "CoverArt/the-undelivered",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://itch.io/jam/tonik-gamejam-2026/rate/4538572",
+      "executableName": ""
     }
   ]
 }

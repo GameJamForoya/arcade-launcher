@@ -49,14 +49,13 @@ namespace ArcadeLauncher.UI
                 Destroy(child.gameObject);
             _items.Clear();
 
-            // Group by JamName, fallback to "GameJam Føroyar {JamYear}"
+            // Group by jam header — combines JamName + JamYear so e.g.
+            // ("Tonik GameJam", 2026) renders as "Tonik GameJam 2026".
             var groups = new Dictionary<string, List<GameEntry>>();
             var groupOrder = new List<string>();
             foreach (var game in games)
             {
-                var key = !string.IsNullOrEmpty(game.JamName)
-                    ? game.JamName
-                    : $"GameJam Føroyar {game.JamYear}";
+                var key = FormatJamHeader(game.JamName, game.JamYear);
                 if (!groups.TryGetValue(key, out var list))
                 {
                     list = new List<GameEntry>();
@@ -78,6 +77,25 @@ namespace ArcadeLauncher.UI
 
             if (_items.Count > 0)
                 SelectItem(0);
+        }
+
+        // Tolerates legacy data where JamName already ends in the year (e.g. "GameJam Føroyar 2024").
+        static string FormatJamHeader(string jamName, int jamYear)
+        {
+            if (string.IsNullOrEmpty(jamName))
+            {
+                return jamYear > 0 ? $"GameJam Føroyar {jamYear}" : "Other";
+            }
+            if (jamYear <= 0)
+            {
+                return jamName;
+            }
+            string yearStr = jamYear.ToString();
+            if (jamName.EndsWith(yearStr))
+            {
+                return jamName;
+            }
+            return $"{jamName} {jamYear}";
         }
 
         void SpawnHeader(string text)
@@ -226,8 +244,6 @@ namespace ArcadeLauncher.UI
 
         static string ResolveExecutablePath(GameEntry entry)
         {
-            if (string.IsNullOrEmpty(entry.ExecutableName)) return null;
-
             string folder;
             if (!string.IsNullOrEmpty(entry.LocalFolder))
             {
@@ -242,7 +258,21 @@ namespace ArcadeLauncher.UI
                 return null;
             }
 
-            return Path.Combine(folder, entry.ExecutableName);
+            // The canonical name in games.json wins when the file is actually there. Otherwise, scan the
+            // folder for the real .exe (mirrors the install-time discovery the Download Manager will run)
+            // and cache the discovered name on the entry so subsequent launches skip the scan.
+            string discovered = InstallScanner.FindExecutable(folder, entry.ExecutableName, entry.Id, entry.Title);
+            if (string.IsNullOrEmpty(discovered)) {
+                return null;
+            }
+
+            bool nameChanged = !string.Equals(discovered, entry.ExecutableName, System.StringComparison.OrdinalIgnoreCase);
+            if (nameChanged) {
+                Debug.Log($"[GameListController] {entry.Title}: executable resolved to '{discovered}' (games.json said '{entry.ExecutableName ?? "<none>"}')");
+                entry.ExecutableName = discovered;
+            }
+
+            return Path.Combine(folder, discovered);
         }
     }
 }

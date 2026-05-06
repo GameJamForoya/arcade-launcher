@@ -13,9 +13,42 @@ namespace ArcadeLauncher.Launcher
     {
         public bool CanLaunch(string executablePath)
         {
-            if (string.IsNullOrEmpty(executablePath)) return false;
-            return File.Exists(executablePath)
-                && string.Equals(Path.GetExtension(executablePath), ".exe", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(executablePath))
+            {
+                Debug.LogWarning("[WindowsGameLauncher] CanLaunch: empty path");
+                return false;
+            }
+            var ext = Path.GetExtension(executablePath);
+            if (!string.Equals(ext, ".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.LogWarning($"[WindowsGameLauncher] CanLaunch: unsupported extension '{ext}' on '{executablePath}'");
+                return false;
+            }
+            if (!File.Exists(executablePath))
+            {
+                var dir = Path.GetDirectoryName(executablePath);
+                var fileName = Path.GetFileName(executablePath);
+                bool dirExists = !string.IsNullOrEmpty(dir) && Directory.Exists(dir);
+                string siblings = "(none)";
+                if (dirExists)
+                {
+                    try
+                    {
+                        siblings = string.Join(", ", Directory.GetFiles(dir));
+                    }
+                    catch (IOException ex)
+                    {
+                        siblings = $"(enumeration failed: {ex.Message})";
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        siblings = $"(enumeration denied: {ex.Message})";
+                    }
+                }
+                Debug.LogWarning($"[WindowsGameLauncher] CanLaunch: File.Exists returned false.\n  path='{executablePath}'\n  dir exists={dirExists}\n  filename='{fileName}'\n  siblings={siblings}");
+                return false;
+            }
+            return true;
         }
 
         public Task<IGameProcess> LaunchAsync(string executablePath, LaunchOptions options)
