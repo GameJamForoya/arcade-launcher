@@ -11,6 +11,16 @@ namespace ArcadeLauncher.Core
         Mock
     }
 
+    // "exe"   — native build extracted to %AppData%/.../Games/<id>/, launched via WindowsGameLauncher
+    // "web"   — itch HTML5 / browser game, launched via Chrome in kiosk mode pointing at PlayUrl
+    // "external" — phone/mobile/non-cabinet game; launcher shows a QR on the detail panel and submit no-ops
+    public static class GameType
+    {
+        public const string Exe = "exe";
+        public const string Web = "web";
+        public const string External = "external";
+    }
+
     public class GameEntry
     {
         [JsonProperty("id")] public string Id { get; set; }
@@ -25,6 +35,8 @@ namespace ArcadeLauncher.Core
         [JsonProperty("pageUrl")] public string PageUrl { get; set; }
         [JsonProperty("executableName")] public string ExecutableName { get; set; }
         [JsonProperty("localFolder")]    public string LocalFolder { get; set; }
+        [JsonProperty("type")] public string Type { get; set; } = GameType.Exe;
+        [JsonProperty("playUrl")] public string PlayUrl { get; set; }
         [JsonIgnore] public GameSourceType Source { get; set; }
     }
 }

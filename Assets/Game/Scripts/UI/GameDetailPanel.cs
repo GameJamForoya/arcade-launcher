@@ -37,10 +37,12 @@ namespace ArcadeLauncher.UI
                 descriptionText.overflowMode = TextOverflowModes.Ellipsis;
                 descriptionText.text = entry.Description;
             }
+
+            bool isExternal = string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase);
             if (playPrompt != null)
             {
                 playPrompt.gameObject.SetActive(true);
-                playPrompt.text = "Press Enter to Play";
+                playPrompt.text = isExternal ? "Scan to play on your phone" : "Press Enter to Play";
             }
 
             if (coverImage != null)
@@ -48,6 +50,18 @@ namespace ArcadeLauncher.UI
                 coverImage.sprite = null;
                 coverImage.enabled = false;
                 if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
+
+                // External entries: the QR (baked into Resources/QR/{id}.png at ingest time) replaces
+                // the cover art entirely. The QR *is* the call to action for these games.
+                if (isExternal)
+                {
+                    var qrSprite = TryLoadLocalQr(entry.Id);
+                    if (qrSprite != null)
+                    {
+                        ApplyCover(qrSprite);
+                    }
+                    return;
+                }
 
                 // Local cover art: drop a sprite at Resources/CoverArt/{id}.png and it auto-loads
                 var localSprite = TryLoadLocalCover(entry.Id);
@@ -62,6 +76,12 @@ namespace ArcadeLauncher.UI
                     AsyncImageLoader.LoadImage(entry.CoverArtUrl, ApplyCover);
                 }
             }
+        }
+
+        static Sprite TryLoadLocalQr(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            return Resources.Load<Sprite>($"QR/{id}");
         }
 
         void ApplyCover(Sprite sprite)

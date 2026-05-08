@@ -228,25 +228,64 @@ namespace ArcadeLauncher.UI
         {
             if (entry == null) return;
 
+            // External (phone/mobile) entries are display-only — the QR on the detail panel IS
+            // the interaction. Pressing Enter does nothing visible from the UI side.
+            if (string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.Log($"[GameListController] {entry.Title}: external entry, see QR on detail panel.");
+                return;
+            }
+
             if (!ServiceLocator.TryGet<IGameLauncher>(out var launcher))
             {
                 Debug.LogError("[GameListController] No IGameLauncher registered.");
                 return;
             }
 
-            var executablePath = ResolveExecutablePath(entry);
-            if (string.IsNullOrEmpty(executablePath))
+            string executablePath;
+            LaunchOptions options;
+            string launchSummary;
+            if (string.Equals(entry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase))
             {
-                Debug.LogWarning($"[GameListController] {entry.Title}: cannot resolve executable path. Set executableName + localFolder (or place the game at <gamesRoot>/{entry.Id}/).");
-                return;
+                if (string.IsNullOrEmpty(entry.PlayUrl))
+                {
+                    Debug.LogWarning($"[GameListController] {entry.Title}: type='web' but PlayUrl is empty.");
+                    return;
+                }
+                executablePath = "";
+                options = new LaunchOptions
+                {
+                    Kind = LaunchKind.WebKiosk,
+                    Url = entry.PlayUrl,
+                    FullScreen = true,
+                    Title = entry.Title,
+                };
+                launchSummary = $"web kiosk → {entry.PlayUrl}";
             }
-            if (!launcher.CanLaunch(executablePath))
+            else
             {
-                Debug.LogWarning($"[GameListController] {entry.Title}: launcher refused {executablePath} (file missing or unsupported).");
-                return;
+                executablePath = ResolveExecutablePath(entry);
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    Debug.LogWarning($"[GameListController] {entry.Title}: cannot resolve executable path. Set executableName + localFolder (or place the game at <gamesRoot>/{entry.Id}/).");
+                    return;
+                }
+                if (!launcher.CanLaunch(executablePath))
+                {
+                    Debug.LogWarning($"[GameListController] {entry.Title}: launcher refused {executablePath} (file missing or unsupported).");
+                    return;
+                }
+                options = new LaunchOptions
+                {
+                    Kind = LaunchKind.NativeExe,
+                    WorkingDirectory = Path.GetDirectoryName(executablePath),
+                    FullScreen = true,
+                    Title = entry.Title,
+                };
+                launchSummary = executablePath;
             }
 
-            Debug.Log($"[GameListController] Launching {entry.Title} → {executablePath}");
+            Debug.Log($"[GameListController] Launching {entry.Title} → {launchSummary}");
 
             // Suspend launcher input while the game runs. Keyboard nav AND controller nav both flow
             // through the EventSystem, so disabling it stops both. The panic key (Delete) bypasses
@@ -256,13 +295,7 @@ namespace ArcadeLauncher.UI
 
             try
             {
-                var process = await launcher.LaunchAsync(executablePath, new LaunchOptions
-                {
-                    WorkingDirectory = Path.GetDirectoryName(executablePath),
-                    FullScreen = true,
-                    Title = entry.Title,
-                });
-
+                var process = await launcher.LaunchAsync(executablePath, options);
                 await process.WaitForExitAsync();
                 Debug.Log($"[GameListController] {entry.Title} exited.");
             }

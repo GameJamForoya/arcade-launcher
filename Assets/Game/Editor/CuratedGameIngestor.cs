@@ -4,8 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using ArcadeLauncher.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -26,6 +28,11 @@ namespace ArcadeLauncher.EditorTools
         private const string GamesJsonAssetPath = "Assets/Game/Resources/games.json";
         private const string CoverArtAssetFolder = "Assets/Game/Resources/CoverArt";
         private const string CoverArtResourcesPrefix = "CoverArt/";
+        private const string QrAssetFolder = "Assets/Game/Resources/QR";
+        private const string QrResourcesPrefix = "QR/";
+        // Free public QR API. Curator-time only — the generated PNGs ship locally so the runtime
+        // build has no internet dependency and no QR-encoder DLL.
+        private const string QrApiUrlTemplate = "https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=4&data={0}";
         private const string LogPrefix = "[Ingest]";
 
         [MenuItem(MenuPath)]
@@ -55,6 +62,7 @@ namespace ArcadeLauncher.EditorTools
                 "GameJamForoyar", "Games");
             Directory.CreateDirectory(gamesRoot);
             Directory.CreateDirectory(CoverArtAssetFolder);
+            Directory.CreateDirectory(QrAssetFolder);
 
             JObject root = LoadGamesJson();
             JArray games = root["games"] as JArray;
@@ -152,6 +160,134 @@ namespace ArcadeLauncher.EditorTools
             string gameFolder, string id, string title, string jamName, int jamYear,
             string gamesRoot, JArray games)
         {
+            ReadmeData readme = ParseReadme(gameFolder, title);
+            string gameType = NormaliseType(readme.Type);
+
+            // Validate URL requirements per type up-front so we fail fast before doing any work.
+            if (gameType == GameType.Web || gameType == GameType.External)
+            {
+                if (string.IsNullOrEmpty(readme.PlayUrl))
+                {
+                    Debug.LogWarning($"{LogPrefix} '{title}': type='{gameType}' requires a 'playUrl:' line in readme.txt. Skipped.");
+                    return IngestResult.Skipped;
+                }
+            }
+
+            string executableName = "";
+            if (gameType == GameType.Exe)
+            {
+                IngestResult exeResult = ExtractAndScanExe(gameFolder, id, title, gamesRoot, out executableName);
+                if (exeResult == IngestResult.Skipped)
+                {
+                    return IngestResult.Skipped;
+                }
+            }
+            else
+            {
+                // Curator might leave a stray zip in a web/external folder by accident. Worth a shout
+                // so they don't think the build's been ingested when it hasn't.
+                string[] strayZips;
+                try
+                {
+                    strayZips = Directory.GetFiles(gameFolder, "*.zip", SearchOption.TopDirectoryOnly);
+                }
+                catch (IOException)
+                {
+                    strayZips = Array.Empty<string>();
+                }
+                if (strayZips.Length > 0)
+                {
+                    Debug.LogWarning($"{LogPrefix} '{title}': type='{gameType}' but found {strayZips.Length} stray .zip file(s) — they will be ignored.");
+                }
+            }
+
+            string[] images = ListImages(gameFolder);
+            string coverSourcePath = images.Length > 0 ? images[0] : null;
+            string[] screenshotSourcePaths = images.Length > 1
+                ? images.Skip(1).ToArray()
+                : Array.Empty<string>();
+
+            string coverResourceUrl = null;
+            if (coverSourcePath != null)
+            {
+                string ext = Path.GetExtension(coverSourcePath);
+                string destAssetPath = $"{CoverArtAssetFolder}/{id}{ext}";
+                if (CopyImageInto(coverSourcePath, destAssetPath, id))
+                {
+                    DeleteSiblingsWithSameStem(id, ext);
+                    coverResourceUrl = CoverArtResourcesPrefix + id;
+                }
+            }
+
+            List<string> screenshotResourceUrls = new();
+            if (screenshotSourcePaths.Length > 0)
+            {
+                DeleteOldScreenshotVariants(id);
+                int n = 1;
+                foreach (string srcPath in screenshotSourcePaths)
+                {
+                    string ext = Path.GetExtension(srcPath);
+                    string baseName = $"{id}-screenshot-{n}";
+                    string destAssetPath = $"{CoverArtAssetFolder}/{baseName}{ext}";
+                    if (CopyImageInto(srcPath, destAssetPath, baseName))
+                    {
+                        screenshotResourceUrls.Add(CoverArtResourcesPrefix + baseName);
+                    }
+                    n++;
+                }
+            }
+
+            // External entries: bake a QR PNG of playUrl so the cabinet can render it without
+            // a runtime QR encoder. Failure here is a warning, not a hard skip — curator can
+            // hand-place a PNG at Assets/Game/Resources/QR/<id>.png and re-run.
+            if (gameType == GameType.External)
+            {
+                bool ok = TryGenerateQr(readme.PlayUrl, id, title);
+                if (!ok)
+                {
+                    Debug.LogWarning($"{LogPrefix} '{title}': QR generation failed — drop a PNG at {QrAssetFolder}/{id}.png manually if needed.");
+                }
+            }
+
+            JObject existing = FindEntry(games, id);
+            bool isNew = existing == null;
+            if (isNew)
+            {
+                existing = new JObject();
+                games.Add(existing);
+            }
+
+            existing["id"] = id;
+            existing["title"] = title;
+            SetIfComputedOrDefault(existing, "developer", readme.Developer);
+            existing["jamYear"] = jamYear;
+            existing["jamName"] = jamName;
+            SetIfComputedOrDefault(existing, "description", readme.Description);
+            SetIfComputedOrDefault(existing, "coverArtUrl", coverResourceUrl);
+            if (screenshotResourceUrls.Count > 0)
+            {
+                existing["screenshotUrls"] = new JArray(screenshotResourceUrls);
+            }
+            else if (existing["screenshotUrls"] == null)
+            {
+                existing["screenshotUrls"] = new JArray();
+            }
+            if (existing["downloadUrl"] == null)
+            {
+                existing["downloadUrl"] = "";
+            }
+            SetIfComputedOrDefault(existing, "pageUrl", readme.PageUrl);
+            SetIfComputedOrDefault(existing, "executableName", executableName);
+            existing["type"] = gameType;
+            SetIfComputedOrDefault(existing, "playUrl", readme.PlayUrl);
+
+            return isNew ? IngestResult.New : IngestResult.Updated;
+        }
+
+        private static IngestResult ExtractAndScanExe(string gameFolder, string id, string title, string gamesRoot, out string executableName)
+        {
+            executableName = "";
+
             string[] zips;
             try
             {
@@ -203,81 +339,76 @@ namespace ArcadeLauncher.EditorTools
 
             FlattenIfWrapped(installRoot, title);
 
-            string executableName = InstallScanner.FindExecutable(installRoot, null, id, title);
+            executableName = InstallScanner.FindExecutable(installRoot, null, id, title);
             if (string.IsNullOrEmpty(executableName))
             {
                 Debug.LogWarning($"{LogPrefix} '{title}': InstallScanner found no usable .exe in '{installRoot}'.");
             }
+            return IngestResult.Updated;
+        }
 
-            string[] images = ListImages(gameFolder);
-            string coverSourcePath = images.Length > 0 ? images[0] : null;
-            string[] screenshotSourcePaths = images.Length > 1
-                ? images.Skip(1).ToArray()
-                : Array.Empty<string>();
-
-            string coverResourceUrl = null;
-            if (coverSourcePath != null)
+        private static string NormaliseType(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
             {
-                string ext = Path.GetExtension(coverSourcePath);
-                string destAssetPath = $"{CoverArtAssetFolder}/{id}{ext}";
-                if (CopyImageInto(coverSourcePath, destAssetPath, id))
+                return GameType.Exe;
+            }
+            string lower = raw.Trim().ToLowerInvariant();
+            switch (lower)
+            {
+                case "exe":
+                case "native":
+                case "":
+                    return GameType.Exe;
+                case "web":
+                case "html5":
+                case "browser":
+                    return GameType.Web;
+                case "external":
+                case "mobile":
+                case "phone":
+                case "qr":
+                    return GameType.External;
+                default:
+                    Debug.LogWarning($"{LogPrefix} unknown type='{raw}' — defaulting to '{GameType.Exe}'.");
+                    return GameType.Exe;
+            }
+        }
+
+        private static bool TryGenerateQr(string url, string id, string title)
+        {
+            string destPath = Path.Combine(QrAssetFolder, $"{id}.png");
+            string requestUrl = string.Format(QrApiUrlTemplate, Uri.EscapeDataString(url));
+            try
+            {
+                using HttpClient client = new();
+                client.Timeout = TimeSpan.FromSeconds(10);
+                byte[] png = client.GetByteArrayAsync(requestUrl).GetAwaiter().GetResult();
+                if (png == null || png.Length < 100)
                 {
-                    DeleteSiblingsWithSameStem(id, ext);
-                    coverResourceUrl = CoverArtResourcesPrefix + id;
+                    Debug.LogWarning($"{LogPrefix} '{title}': QR API returned suspicious payload ({png?.Length ?? 0} bytes).");
+                    return false;
                 }
+                Directory.CreateDirectory(QrAssetFolder);
+                File.WriteAllBytes(destPath, png);
+                Debug.Log($"{LogPrefix} '{title}': wrote QR for {url} → {destPath}");
+                return true;
             }
-
-            List<string> screenshotResourceUrls = new();
-            if (screenshotSourcePaths.Length > 0)
+            catch (HttpRequestException e)
             {
-                DeleteOldScreenshotVariants(id);
-                int n = 1;
-                foreach (string srcPath in screenshotSourcePaths)
-                {
-                    string ext = Path.GetExtension(srcPath);
-                    string baseName = $"{id}-screenshot-{n}";
-                    string destAssetPath = $"{CoverArtAssetFolder}/{baseName}{ext}";
-                    if (CopyImageInto(srcPath, destAssetPath, baseName))
-                    {
-                        screenshotResourceUrls.Add(CoverArtResourcesPrefix + baseName);
-                    }
-                    n++;
-                }
+                Debug.LogWarning($"{LogPrefix} '{title}': QR fetch failed (network) — {e.Message}.");
+                return false;
             }
-
-            ReadmeData readme = ParseReadme(gameFolder, title);
-
-            JObject existing = FindEntry(games, id);
-            bool isNew = existing == null;
-            if (isNew)
+            catch (TaskCanceledException e)
             {
-                existing = new JObject();
-                games.Add(existing);
+                Debug.LogWarning($"{LogPrefix} '{title}': QR fetch timed out — {e.Message}.");
+                return false;
             }
-
-            existing["id"] = id;
-            existing["title"] = title;
-            SetIfComputedOrDefault(existing, "developer", readme.Developer);
-            existing["jamYear"] = jamYear;
-            existing["jamName"] = jamName;
-            SetIfComputedOrDefault(existing, "description", readme.Description);
-            SetIfComputedOrDefault(existing, "coverArtUrl", coverResourceUrl);
-            if (screenshotResourceUrls.Count > 0)
+            catch (IOException e)
             {
-                existing["screenshotUrls"] = new JArray(screenshotResourceUrls);
+                Debug.LogWarning($"{LogPrefix} '{title}': QR write failed — {e.Message}.");
+                return false;
             }
-            else if (existing["screenshotUrls"] == null)
-            {
-                existing["screenshotUrls"] = new JArray();
-            }
-            if (existing["downloadUrl"] == null)
-            {
-                existing["downloadUrl"] = "";
-            }
-            SetIfComputedOrDefault(existing, "pageUrl", readme.PageUrl);
-            SetIfComputedOrDefault(existing, "executableName", executableName);
-
-            return isNew ? IngestResult.New : IngestResult.Updated;
         }
 
         // Overwrites when we computed a value; otherwise leaves the curator's existing value alone
@@ -517,6 +648,8 @@ namespace ArcadeLauncher.EditorTools
             public string PageUrl;
             public string Developer;
             public string Description;
+            public string Type;
+            public string PlayUrl;
         }
 
         private static ReadmeData ParseReadme(string gameFolder, string title)
@@ -569,6 +702,12 @@ namespace ArcadeLauncher.EditorTools
                         break;
                     case "team":
                         data.Developer = value;
+                        break;
+                    case "type":
+                        data.Type = value;
+                        break;
+                    case "playurl":
+                        data.PlayUrl = value;
                         break;
                 }
             }
