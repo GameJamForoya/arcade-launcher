@@ -22,9 +22,14 @@ namespace ArcadeLauncher.UI
         [SerializeField] GameObject emptyStateIndicator;
 
         readonly List<GameListItem> _items = new();
+        GameListItem _lastSelected;
 
         async void Start()
         {
+            // Cabinet UX: no visible cursor, and confine it so a stray bump can't deselect the list.
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Confined;
+
             if (loadingIndicator != null) loadingIndicator.SetActive(true);
             if (emptyStateIndicator != null) emptyStateIndicator.SetActive(false);
 
@@ -196,9 +201,26 @@ namespace ArcadeLauncher.UI
             {
                 if (_items[i].GameEntry == entry)
                 {
+                    _lastSelected = _items[i];
                     ScrollIntoView(_items[i].GetComponent<RectTransform>());
                     break;
                 }
+            }
+        }
+
+        // Re-grab focus whenever it goes null — happens after a panic-killed game returns,
+        // and also when the user clicks on empty UI area (StandaloneInputModule clears selection).
+        void Update()
+        {
+            EventSystem es = EventSystem.current;
+            if (es == null || !es.enabled) return;
+            if (es.currentSelectedGameObject != null) return;
+            if (_items.Count == 0) return;
+
+            GameListItem fallback = _lastSelected != null ? _lastSelected : _items[0];
+            if (fallback != null && fallback.Selectable != null)
+            {
+                es.SetSelectedGameObject(fallback.Selectable.gameObject);
             }
         }
 
@@ -225,6 +247,13 @@ namespace ArcadeLauncher.UI
             }
 
             Debug.Log($"[GameListController] Launching {entry.Title} → {executablePath}");
+
+            // Suspend launcher input while the game runs. Keyboard nav AND controller nav both flow
+            // through the EventSystem, so disabling it stops both. The panic key (Delete) bypasses
+            // this entirely — PanicKeyWatcher polls OS-level keyboard state via P/Invoke.
+            EventSystem eventSystem = EventSystem.current;
+            if (eventSystem != null) eventSystem.enabled = false;
+
             try
             {
                 var process = await launcher.LaunchAsync(executablePath, new LaunchOptions
@@ -240,6 +269,17 @@ namespace ArcadeLauncher.UI
             catch (System.Exception ex)
             {
                 Debug.LogError($"[GameListController] Failed to launch {entry.Title}: {ex.Message}");
+            }
+            finally
+            {
+                if (eventSystem != null)
+                {
+                    eventSystem.enabled = true;
+                    if (_lastSelected != null && _lastSelected.Selectable != null)
+                    {
+                        eventSystem.SetSelectedGameObject(_lastSelected.Selectable.gameObject);
+                    }
+                }
             }
         }
 
