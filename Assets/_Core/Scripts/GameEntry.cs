@@ -21,6 +21,24 @@ namespace ArcadeLauncher.Core
         public const string External = "external";
     }
 
+    // Platform keys for GameEntry.Builds. These double as the staging subfolder names curators
+    // upload into (<Game Title>/windows/game.zip) and the keys a launcher build matches against
+    // at runtime, so they must stay lowercase and in sync with UPLOAD-INSTRUCTIONS.txt on Drive.
+    public static class GamePlatform
+    {
+        public const string Windows = "windows";
+        public const string MacOs = "macos";
+        public const string Linux = "linux";
+    }
+
+    public class GameBuild
+    {
+        [JsonProperty("executableName")] public string ExecutableName { get; set; }
+        // Direct-download HTTPS link for this platform's zip (Drive "anyone with link" file).
+        // Empty for entries that are pre-installed or have no hosted build.
+        [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
+    }
+
     public class GameEntry
     {
         [JsonProperty("id")] public string Id { get; set; }
@@ -35,6 +53,9 @@ namespace ArcadeLauncher.Core
         [JsonProperty("pageUrl")] public string PageUrl { get; set; }
         [JsonProperty("executableName")] public string ExecutableName { get; set; }
         [JsonProperty("localFolder")]    public string LocalFolder { get; set; }
+        // Per-platform builds keyed by GamePlatform values. Empty for web/external entries and for
+        // legacy exe entries, where the flat ExecutableName is treated as the Windows build.
+        [JsonProperty("builds")] public Dictionary<string, GameBuild> Builds { get; set; } = new();
         [JsonProperty("type")] public string Type { get; set; } = GameType.Exe;
         [JsonProperty("playUrl")] public string PlayUrl { get; set; }
         [JsonIgnore] public GameSourceType Source { get; set; }

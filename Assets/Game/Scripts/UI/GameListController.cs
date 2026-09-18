@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using ArcadeLauncher.Core;
+using ArcadeLauncher.Launcher;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -38,13 +39,55 @@ namespace ArcadeLauncher.UI
 
             if (loadingIndicator != null) loadingIndicator.SetActive(false);
 
-            if (games.Count == 0)
+            List<GameEntry> visibleGames = FilterForHostPlatform(games);
+
+            if (visibleGames.Count == 0)
             {
                 if (emptyStateIndicator != null) emptyStateIndicator.SetActive(true);
                 return;
             }
 
-            Populate(games);
+            Populate(visibleGames);
+        }
+
+        // Hides entries this launcher build cannot run: native builds without a build for the
+        // host platform. Web/external entries are platform-independent and always pass.
+        static List<GameEntry> FilterForHostPlatform(IReadOnlyList<GameEntry> games)
+        {
+            var visible = new List<GameEntry>(games.Count);
+            int hiddenCount = 0;
+            foreach (var game in games)
+            {
+                if (IsVisibleOnHost(game))
+                {
+                    visible.Add(game);
+                }
+                else
+                {
+                    hiddenCount++;
+                }
+            }
+
+            if (hiddenCount > 0)
+            {
+                Debug.Log($"[GameListController] Hid {hiddenCount} entry(ies) with no build for host platform '{HostPlatform.Key}'.");
+            }
+
+            return visible;
+        }
+
+        static bool IsVisibleOnHost(GameEntry entry)
+        {
+            bool isWeb = string.Equals(entry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase);
+            bool isExternal = string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase);
+            if (isWeb || isExternal) return true;
+
+            bool isExeType = string.IsNullOrEmpty(entry.Type) || string.Equals(entry.Type, GameType.Exe, System.StringComparison.OrdinalIgnoreCase);
+            if (!isExeType) return false;
+
+            bool hasHostBuild = entry.Builds != null && entry.Builds.ContainsKey(HostPlatform.Key);
+            bool isLegacyWindowsOnlyEntry = (entry.Builds == null || entry.Builds.Count == 0) && HostPlatform.Key == GamePlatform.Windows;
+            return hasHostBuild || isLegacyWindowsOnlyEntry;
         }
 
         void Populate(IReadOnlyList<GameEntry> games)
@@ -236,6 +279,12 @@ namespace ArcadeLauncher.UI
                 return;
             }
 
+            bool isExeType = string.IsNullOrEmpty(entry.Type) || string.Equals(entry.Type, GameType.Exe, System.StringComparison.OrdinalIgnoreCase);
+            if (isExeType && !HandleExeSubmit(entry))
+            {
+                return;
+            }
+
             if (!ServiceLocator.TryGet<IGameLauncher>(out var launcher))
             {
                 Debug.LogError("[GameListController] No IGameLauncher registered.");
@@ -316,6 +365,55 @@ namespace ArcadeLauncher.UI
             }
         }
 
+        // Routes a submit on an exe-type entry through the download lifecycle before the existing
+        // launch flow runs. Returns true when the caller should proceed to launch (installed, or no
+        // IDownloadManager registered — in which case every entry is treated as already installed so
+        // the launcher keeps working without the service). Returns false when this call fully handled
+        // the submit (enqueued/cancelled a download, or ignored an in-progress install).
+        static bool HandleExeSubmit(GameEntry entry)
+        {
+            if (!ServiceLocator.TryGet<IDownloadManager>(out var downloadManager))
+            {
+                return true;
+            }
+
+            // Entries with an explicit localFolder live outside the games root the download manager
+            // tracks, so its install state is meaningless for them — launch directly, as before.
+            bool hasCustomInstallFolder = !string.IsNullOrEmpty(entry.LocalFolder);
+            if (hasCustomInstallFolder)
+            {
+                return true;
+            }
+
+            GameInstallState state = downloadManager.GetState(entry.Id);
+            switch (state)
+            {
+                case GameInstallState.Installed:
+                    return true;
+
+                case GameInstallState.NotInstalled:
+                case GameInstallState.Failed:
+                    if (!downloadManager.TryEnqueueDownload(entry, HostPlatform.Key))
+                    {
+                        Debug.LogWarning($"[GameListController] {entry.Title}: failed to enqueue download for platform '{HostPlatform.Key}'.");
+                    }
+                    return false;
+
+                case GameInstallState.Queued:
+                case GameInstallState.Downloading:
+                    downloadManager.CancelDownload(entry.Id);
+                    return false;
+
+                case GameInstallState.Installing:
+                    Debug.Log($"[GameListController] {entry.Title}: install in progress, ignoring submit.");
+                    return false;
+
+                default:
+                    Debug.LogWarning($"[GameListController] {entry.Title}: unhandled install state '{state}'.");
+                    return false;
+            }
+        }
+
         static string ResolveExecutablePath(GameEntry entry)
         {
             string folder;
@@ -332,18 +430,27 @@ namespace ArcadeLauncher.UI
                 return null;
             }
 
+            GameBuild hostBuild = entry.Builds != null && entry.Builds.TryGetValue(HostPlatform.Key, out var build) ? build : null;
+            bool hasHostBuildName = hostBuild != null && !string.IsNullOrEmpty(hostBuild.ExecutableName);
+            string preferredName = hasHostBuildName ? hostBuild.ExecutableName : entry.ExecutableName;
+
             // The canonical name in games.json wins when the file is actually there. Otherwise, scan the
             // folder for the real .exe (mirrors the install-time discovery the Download Manager will run)
-            // and cache the discovered name on the entry so subsequent launches skip the scan.
-            string discovered = InstallScanner.FindExecutable(folder, entry.ExecutableName, entry.Id, entry.Title);
+            // and cache the discovered name back onto whichever field supplied the preferred name, so
+            // subsequent launches skip the scan.
+            string discovered = InstallScanner.FindExecutable(folder, preferredName, entry.Id, entry.Title);
             if (string.IsNullOrEmpty(discovered)) {
                 return null;
             }
 
-            bool nameChanged = !string.Equals(discovered, entry.ExecutableName, System.StringComparison.OrdinalIgnoreCase);
+            bool nameChanged = !string.Equals(discovered, preferredName, System.StringComparison.OrdinalIgnoreCase);
             if (nameChanged) {
-                Debug.Log($"[GameListController] {entry.Title}: executable resolved to '{discovered}' (games.json said '{entry.ExecutableName ?? "<none>"}')");
-                entry.ExecutableName = discovered;
+                Debug.Log($"[GameListController] {entry.Title}: executable resolved to '{discovered}' (games.json said '{preferredName ?? "<none>"}')");
+                if (hasHostBuildName) {
+                    hostBuild.ExecutableName = discovered;
+                } else {
+                    entry.ExecutableName = discovered;
+                }
             }
 
             return Path.Combine(folder, discovered);

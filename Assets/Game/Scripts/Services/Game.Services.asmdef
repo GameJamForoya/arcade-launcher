@@ -1,11 +1,8 @@
 {
-    "name": "Game.UI",
-    "rootNamespace": "ArcadeLauncher.UI",
+    "name": "Game.Services",
+    "rootNamespace": "ArcadeLauncher.Services",
     "references": [
-        "Game.Core",
-        "Game.Launcher",
-        "Unity.TextMeshPro",
-        "Unity.InputSystem"
+        "Game.Core"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

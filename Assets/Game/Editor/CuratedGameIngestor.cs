@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -20,6 +20,11 @@ namespace ArcadeLauncher.EditorTools
     /// Curator-facing ingest: turns a staging tree of <jam>/<game>/(zip + readme + images) folders
     /// into entries in Assets/Game/Resources/games.json, copies cover art into Resources, and extracts
     /// each build into %AppData%/GameJamForoyar/Games/<id>/. Idempotent — safe to re-run.
+    ///
+    /// Native builds may be split into windows/macos/linux subfolders (one zip each); a single zip
+    /// directly in the game folder is the legacy layout and counts as the Windows build. Every
+    /// available platform is recorded in the entry's "builds" map, but only <see cref="TargetPlatform"/>
+    /// is actually extracted.
     /// </summary>
     public static class CuratedGameIngestor
     {
@@ -34,6 +39,25 @@ namespace ArcadeLauncher.EditorTools
         // build has no internet dependency and no QR-encoder DLL.
         private const string QrApiUrlTemplate = "https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=4&data={0}";
         private const string LogPrefix = "[Ingest]";
+        // The cabinet is Windows, so only this platform's zip is unpacked into AppData. A mac or linux
+        // cabinet re-runs this ingest with TargetPlatform pointed at its own GamePlatform value.
+        private const string TargetPlatform = GamePlatform.Windows;
+        private const string BuildsJsonKey = "builds";
+        private const string ExecutableNameJsonKey = "executableName";
+        private const string DownloadUrlJsonKey = "downloadUrl";
+        private const string ZipSearchPattern = "*.zip";
+        private const string WindowsExecutableExtension = ".exe";
+        private const string LinuxExecutableExtension = ".x86_64";
+        private const string LinuxFallbackExecutableExtension = ".x86";
+        private const string MacAppBundleExtension = ".app";
+        private const char ZipPathSeparator = '/';
+
+        // Windows first: its executable is also written to the flat "executableName" field, and this order
+        // decides the key order of freshly written "builds" objects.
+        private static readonly string[] _supportedPlatforms =
+        {
+            GamePlatform.Windows, GamePlatform.MacOs, GamePlatform.Linux
+        };
 
         [MenuItem(MenuPath)]
         public static void RunFromMenu()
@@ -173,10 +197,11 @@ namespace ArcadeLauncher.EditorTools
                 }
             }
 
-            string executableName = "";
+            Dictionary<string, string> executablesByPlatform = new();
             if (gameType == GameType.Exe)
             {
-                IngestResult exeResult = ExtractAndScanExe(gameFolder, id, title, gamesRoot, out executableName);
+                IngestResult exeResult = ResolvePlatformBuilds(
+                    gameFolder, id, title, gamesRoot, executablesByPlatform);
                 if (exeResult == IngestResult.Skipped)
                 {
                     return IngestResult.Skipped;
@@ -189,7 +214,7 @@ namespace ArcadeLauncher.EditorTools
                 string[] strayZips;
                 try
                 {
-                    strayZips = Directory.GetFiles(gameFolder, "*.zip", SearchOption.TopDirectoryOnly);
+                    strayZips = Directory.GetFiles(gameFolder, ZipSearchPattern, SearchOption.TopDirectoryOnly);
                 }
                 catch (IOException)
                 {
@@ -199,6 +224,14 @@ namespace ArcadeLauncher.EditorTools
                 {
                     Debug.LogWarning($"{LogPrefix} '{title}': type='{gameType}' but found {strayZips.Length} stray .zip file(s) — they will be ignored.");
                 }
+            }
+
+            // The flat "executableName" field stays the Windows build's, for back-compat with the runtime.
+            bool hasWindowsBuild = executablesByPlatform.TryGetValue(
+                GamePlatform.Windows, out string windowsExecutableName);
+            if (!hasWindowsBuild)
+            {
+                windowsExecutableName = "";
             }
 
             string[] images = ListImages(gameFolder);
@@ -277,38 +310,72 @@ namespace ArcadeLauncher.EditorTools
                 existing["downloadUrl"] = "";
             }
             SetIfComputedOrDefault(existing, "pageUrl", readme.PageUrl);
-            SetIfComputedOrDefault(existing, "executableName", executableName);
+            SetIfComputedOrDefault(existing, ExecutableNameJsonKey, windowsExecutableName);
+            WriteBuilds(existing, executablesByPlatform);
             existing["type"] = gameType;
             SetIfComputedOrDefault(existing, "playUrl", readme.PlayUrl);
 
             return isNew ? IngestResult.New : IngestResult.Updated;
         }
 
-        private static IngestResult ExtractAndScanExe(string gameFolder, string id, string title, string gamesRoot, out string executableName)
+        /// <summary>
+        /// Locates one zip per platform, extracts the target platform's build and reads the other
+        /// platforms' executable names straight out of their archives. Fills
+        /// <paramref name="executablesByPlatform"/> with one entry per platform that has a zip.
+        /// </summary>
+        private static IngestResult ResolvePlatformBuilds(
+            string gameFolder, string id, string title, string gamesRoot,
+            Dictionary<string, string> executablesByPlatform)
+        {
+            Dictionary<string, string> zipsByPlatform = CollectPlatformZips(gameFolder, title);
+            if (zipsByPlatform.Count == 0)
+            {
+                // CollectPlatformZips has already explained which layout it was looking for.
+                return IngestResult.Skipped;
+            }
+
+            foreach (string platform in _supportedPlatforms)
+            {
+                if (!zipsByPlatform.TryGetValue(platform, out string zipPath))
+                {
+                    continue;
+                }
+
+                string executableName;
+                if (platform == TargetPlatform)
+                {
+                    if (!TryInstallTargetBuild(zipPath, id, title, gamesRoot, out executableName))
+                    {
+                        return IngestResult.Skipped;
+                    }
+                }
+                else
+                {
+                    executableName = PeekExecutableName(zipPath, platform, id, title);
+                    if (string.IsNullOrEmpty(executableName))
+                    {
+                        Debug.LogWarning($"{LogPrefix} '{title}': could not identify the {platform} executable inside '{Path.GetFileName(zipPath)}' — recording an empty '{BuildsJsonKey}.{platform}' entry to hand-fill.");
+                    }
+                }
+                executablesByPlatform[platform] = executableName;
+            }
+
+            if (!executablesByPlatform.ContainsKey(TargetPlatform))
+            {
+                string otherPlatforms = string.Join(", ", executablesByPlatform.Keys);
+                Debug.LogWarning($"{LogPrefix} '{title}': no {TargetPlatform} build (found: {otherPlatforms}) — ingesting metadata only, this cabinet cannot launch it.");
+            }
+            return IngestResult.Updated;
+        }
+
+        /// <summary>
+        /// Wipes and re-extracts the target platform's zip into %AppData%/.../Games/&lt;id&gt;/, then resolves
+        /// the executable on disk. Returns false only when the build could not be installed at all.
+        /// </summary>
+        private static bool TryInstallTargetBuild(
+            string zipPath, string id, string title, string gamesRoot, out string executableName)
         {
             executableName = "";
-
-            string[] zips;
-            try
-            {
-                zips = Directory.GetFiles(gameFolder, "*.zip", SearchOption.TopDirectoryOnly);
-            }
-            catch (IOException e)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': cannot list zip files — {e.Message}. Skipped.");
-                return IngestResult.Skipped;
-            }
-            if (zips.Length == 0)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': no .zip found. Skipped.");
-                return IngestResult.Skipped;
-            }
-            if (zips.Length > 1)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': multiple .zip files found ({zips.Length}) — expected exactly one. Skipped.");
-                return IngestResult.Skipped;
-            }
-            string zipPath = zips[0];
 
             string installRoot = Path.Combine(gamesRoot, id);
             try
@@ -324,27 +391,436 @@ namespace ArcadeLauncher.EditorTools
             catch (IOException e)
             {
                 Debug.LogWarning($"{LogPrefix} '{title}': extraction failed — {e.Message}. Skipped.");
-                return IngestResult.Skipped;
+                return false;
             }
             catch (UnauthorizedAccessException e)
             {
                 Debug.LogWarning($"{LogPrefix} '{title}': extraction failed — {e.Message}. Skipped.");
-                return IngestResult.Skipped;
+                return false;
             }
             catch (InvalidDataException e)
             {
                 Debug.LogWarning($"{LogPrefix} '{title}': zip is invalid — {e.Message}. Skipped.");
-                return IngestResult.Skipped;
+                return false;
             }
 
+            // Junk removal brackets the flatten: before, so "__MACOSX" cannot block the
+            // single-wrapper check; after, because the wrapper may have carried its own.
+            InstallScanner.DeleteArchiveJunk(installRoot, note => Debug.Log($"{LogPrefix} '{title}': {note}."));
             FlattenIfWrapped(installRoot, title);
+            InstallScanner.DeleteArchiveJunk(installRoot, note => Debug.Log($"{LogPrefix} '{title}': {note}."));
 
             executableName = InstallScanner.FindExecutable(installRoot, null, id, title);
             if (string.IsNullOrEmpty(executableName))
             {
                 Debug.LogWarning($"{LogPrefix} '{title}': InstallScanner found no usable .exe in '{installRoot}'.");
+                executableName = "";
             }
-            return IngestResult.Updated;
+            return true;
+        }
+
+        /// <summary>
+        /// Maps each platform that ships a build to its zip path. Platform subfolders win over a zip
+        /// sitting directly in the game folder (the legacy Windows layout).
+        /// </summary>
+        private static Dictionary<string, string> CollectPlatformZips(string gameFolder, string title)
+        {
+            Dictionary<string, string> zipsByPlatform = new();
+
+            string[] subFolders;
+            try
+            {
+                subFolders = Directory.GetDirectories(gameFolder);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': cannot list platform subfolders — {e.Message}.");
+                subFolders = Array.Empty<string>();
+            }
+
+            foreach (string platform in _supportedPlatforms)
+            {
+                string platformFolder = subFolders.FirstOrDefault(
+                    folder => string.Equals(Path.GetFileName(folder), platform, StringComparison.OrdinalIgnoreCase));
+                if (platformFolder == null)
+                {
+                    continue;
+                }
+
+                string platformZip = FindSingleZip(platformFolder, title, $"the {platform}/ folder");
+                if (platformZip != null)
+                {
+                    zipsByPlatform[platform] = platformZip;
+                }
+            }
+
+            string[] rootZips;
+            try
+            {
+                rootZips = Directory.GetFiles(gameFolder, ZipSearchPattern, SearchOption.TopDirectoryOnly);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': cannot list zip files — {e.Message}.");
+                rootZips = Array.Empty<string>();
+            }
+
+            // A zip at the game-folder root is the legacy layout and is ALWAYS the Windows build,
+            // regardless of which platform this ingest run targets — see the class doc.
+            bool windowsAlreadyFound = zipsByPlatform.ContainsKey(GamePlatform.Windows);
+            if (windowsAlreadyFound)
+            {
+                if (rootZips.Length > 0)
+                {
+                    Debug.LogWarning($"{LogPrefix} '{title}': {rootZips.Length} .zip file(s) sit next to readme.txt but the {GamePlatform.Windows}/ folder already supplies that build — they will be ignored.");
+                }
+            }
+            else if (rootZips.Length == 1)
+            {
+                zipsByPlatform[GamePlatform.Windows] = rootZips[0];
+            }
+            else if (rootZips.Length > 1)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': multiple .zip files found ({rootZips.Length}) next to readme.txt — expected exactly one, or one per platform subfolder. Ignoring all of them.");
+            }
+
+            if (zipsByPlatform.Count == 0)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': no .zip found — expected one in the game folder or one per {string.Join("/", _supportedPlatforms)} subfolder. Skipped.");
+            }
+            return zipsByPlatform;
+        }
+
+        // Returns null (having warned) unless the folder holds exactly one zip.
+        private static string FindSingleZip(string folder, string title, string folderLabel)
+        {
+            string[] zips;
+            try
+            {
+                zips = Directory.GetFiles(folder, ZipSearchPattern, SearchOption.TopDirectoryOnly);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': cannot list zip files in {folderLabel} — {e.Message}. Treated as missing.");
+                return null;
+            }
+            if (zips.Length == 0)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': {folderLabel} holds no .zip — treated as missing.");
+                return null;
+            }
+            if (zips.Length > 1)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': {folderLabel} holds multiple .zip files ({zips.Length}) — expected exactly one. Platform skipped.");
+                return null;
+            }
+            return zips[0];
+        }
+
+        // One archive entry, reduced to what executable discovery needs. Length is the uncompressed size.
+        private readonly struct ZipEntryInfo
+        {
+            public ZipEntryInfo(string entryPath, long length)
+            {
+                EntryPath = entryPath.Replace('\\', ZipPathSeparator);
+                Length = length;
+            }
+
+            public string EntryPath { get; }
+            public long Length { get; }
+
+            public bool IsDirectory =>
+                EntryPath.Length > 0 && EntryPath[EntryPath.Length - 1] == ZipPathSeparator;
+
+            public bool IsTopLevelFile => !IsDirectory && EntryPath.IndexOf(ZipPathSeparator) < 0;
+
+            public string RootSegment
+            {
+                get
+                {
+                    int separatorIndex = EntryPath.IndexOf(ZipPathSeparator);
+                    return separatorIndex < 0 ? EntryPath : EntryPath.Substring(0, separatorIndex);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads the executable name of a platform this cabinet never extracts, purely from the archive's
+        /// entry names. Returns "" when nothing convincing was found.
+        /// </summary>
+        private static string PeekExecutableName(string zipPath, string platform, string id, string title)
+        {
+            List<ZipEntryInfo> entries = ReadZipEntries(zipPath, title);
+            if (entries == null)
+            {
+                return "";
+            }
+            entries = RemoveArchiveJunkEntries(entries);
+            List<ZipEntryInfo> unwrapped = StripSingleWrapperFolder(entries);
+
+            switch (platform)
+            {
+                case GamePlatform.Windows:
+                    return FindWindowsExecutableName(unwrapped, id, title) ?? "";
+                case GamePlatform.Linux:
+                    return FindLinuxExecutableName(unwrapped) ?? "";
+                case GamePlatform.MacOs:
+                    // A .app bundle is itself a folder, so look before unwrapping — otherwise a zip
+                    // containing only the bundle looks exactly like a wrapped build.
+                    return FindMacAppBundleName(entries) ?? FindMacAppBundleName(unwrapped) ?? "";
+                default:
+                    Debug.LogWarning($"{LogPrefix} '{title}': no executable-discovery rule for platform '{platform}'.");
+                    return "";
+            }
+        }
+
+        // Drops macOS metadata entries ("__MACOSX/…", "._" AppleDouble files, ".DS_Store") so they
+        // can neither block wrapper-stripping nor shadow the real executable during name matching.
+        private static List<ZipEntryInfo> RemoveArchiveJunkEntries(List<ZipEntryInfo> entries)
+        {
+            List<ZipEntryInfo> kept = new(entries.Count);
+            foreach (ZipEntryInfo entry in entries)
+            {
+                string fileName = Path.GetFileName(entry.EntryPath.TrimEnd(ZipPathSeparator));
+                bool isJunk = InstallScanner.IsArchiveJunkName(entry.RootSegment)
+                    || InstallScanner.IsArchiveJunkName(fileName);
+                if (!isJunk)
+                {
+                    kept.Add(entry);
+                }
+            }
+            return kept;
+        }
+
+        // Returns null when the archive could not be read at all — an empty list means "read fine,
+        // but there was nothing in it".
+        private static List<ZipEntryInfo> ReadZipEntries(string zipPath, string title)
+        {
+            ZipArchive archive;
+            try
+            {
+                archive = ZipFile.OpenRead(zipPath);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': cannot read '{Path.GetFileName(zipPath)}' — {e.Message}.");
+                return null;
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': cannot read '{Path.GetFileName(zipPath)}' — {e.Message}.");
+                return null;
+            }
+            catch (InvalidDataException e)
+            {
+                Debug.LogWarning($"{LogPrefix} '{title}': '{Path.GetFileName(zipPath)}' is not a valid zip — {e.Message}.");
+                return null;
+            }
+
+            using (archive)
+            {
+                List<ZipEntryInfo> entries = new(archive.Entries.Count);
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    entries.Add(new ZipEntryInfo(entry.FullName, entry.Length));
+                }
+                return entries;
+            }
+        }
+
+        // Archive-side mirror of FlattenIfWrapped: when every entry lives under one top-level folder,
+        // that folder is transparent to executable discovery.
+        private static List<ZipEntryInfo> StripSingleWrapperFolder(List<ZipEntryInfo> entries)
+        {
+            string wrapperName = null;
+            foreach (ZipEntryInfo entry in entries)
+            {
+                if (entry.IsTopLevelFile)
+                {
+                    return entries;
+                }
+                if (wrapperName == null)
+                {
+                    wrapperName = entry.RootSegment;
+                }
+                else if (!string.Equals(entry.RootSegment, wrapperName, StringComparison.Ordinal))
+                {
+                    return entries;
+                }
+            }
+            if (wrapperName == null)
+            {
+                return entries;
+            }
+
+            string wrapperPrefix = wrapperName + ZipPathSeparator;
+            List<ZipEntryInfo> stripped = new(entries.Count);
+            foreach (ZipEntryInfo entry in entries)
+            {
+                bool isTheWrapperItself = entry.EntryPath.Length <= wrapperPrefix.Length;
+                if (isTheWrapperItself)
+                {
+                    continue;
+                }
+                stripped.Add(new ZipEntryInfo(entry.EntryPath.Substring(wrapperPrefix.Length), entry.Length));
+            }
+            return stripped;
+        }
+
+        // Same heuristics as InstallScanner.FindExecutable, applied to entry names instead of files.
+        private static string FindWindowsExecutableName(List<ZipEntryInfo> entries, string id, string title)
+        {
+            List<ZipEntryInfo> candidates = entries
+                .Where(entry => entry.IsTopLevelFile)
+                .Where(entry => HasExtension(entry.EntryPath, WindowsExecutableExtension))
+                .Where(entry => !InstallScanner.IsExcludedExecutableName(entry.EntryPath))
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                return null;
+            }
+            if (candidates.Count == 1)
+            {
+                return candidates[0].EntryPath;
+            }
+
+            string idMatch = FindEntryNameMatching(candidates, id);
+            if (idMatch != null)
+            {
+                return idMatch;
+            }
+            string titleMatch = FindEntryNameMatching(candidates, title);
+            if (titleMatch != null)
+            {
+                return titleMatch;
+            }
+            return LargestEntryName(candidates);
+        }
+
+        private static string FindLinuxExecutableName(List<ZipEntryInfo> entries)
+        {
+            List<ZipEntryInfo> topLevelFiles = entries.Where(entry => entry.IsTopLevelFile).ToList();
+
+            string sixtyFourBit = LargestEntryName(
+                topLevelFiles.Where(entry => HasExtension(entry.EntryPath, LinuxExecutableExtension)));
+            if (sixtyFourBit != null)
+            {
+                return sixtyFourBit;
+            }
+            string thirtyTwoBit = LargestEntryName(
+                topLevelFiles.Where(entry => HasExtension(entry.EntryPath, LinuxFallbackExecutableExtension)));
+            if (thirtyTwoBit != null)
+            {
+                return thirtyTwoBit;
+            }
+            // Engines that ship the launcher without any extension at all, e.g. "MyGame".
+            return LargestEntryName(
+                topLevelFiles.Where(entry => string.IsNullOrEmpty(Path.GetExtension(entry.EntryPath))));
+        }
+
+        // The recorded macOS executable is the bundle folder itself. Accepts an implicit bundle (no
+        // explicit directory entry in the archive) by looking at each entry's first path segment.
+        private static string FindMacAppBundleName(List<ZipEntryInfo> entries)
+        {
+            foreach (ZipEntryInfo entry in entries)
+            {
+                string rootSegment = entry.RootSegment;
+                if (HasExtension(rootSegment, MacAppBundleExtension))
+                {
+                    return rootSegment;
+                }
+            }
+            return null;
+        }
+
+        private static string FindEntryNameMatching(List<ZipEntryInfo> candidates, string wantedName)
+        {
+            string wantedKey = InstallScanner.NormalizeForNameMatch(wantedName);
+            if (wantedKey.Length == 0)
+            {
+                return null;
+            }
+            foreach (ZipEntryInfo entry in candidates)
+            {
+                string entryKey = InstallScanner.NormalizeForNameMatch(Path.GetFileNameWithoutExtension(entry.EntryPath));
+                if (string.Equals(entryKey, wantedKey, StringComparison.Ordinal))
+                {
+                    return entry.EntryPath;
+                }
+            }
+            return null;
+        }
+
+        private static string LargestEntryName(IEnumerable<ZipEntryInfo> entries)
+        {
+            return entries
+                .OrderByDescending(entry => entry.Length)
+                .Select(entry => entry.EntryPath)
+                .FirstOrDefault();
+        }
+
+        private static bool HasExtension(string fileName, string extension)
+        {
+            return fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Local twin of InstallScanner's name normaliser, so entry names can be matched against the
+        // id/title with the same forgiveness for spaces, casing and punctuation.
+        private static string InstallScanner.NormalizeForNameMatch(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return "";
+            }
+            StringBuilder builder = new(value.Length);
+            foreach (char c in value)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    builder.Append(char.ToLowerInvariant(c));
+                }
+            }
+            return builder.ToString();
+        }
+
+        // Per-platform twin of SetIfComputedOrDefault: a discovered executable name wins, but a
+        // hand-curated one is never overwritten with an empty string.
+        private static void WriteBuilds(JObject entry, Dictionary<string, string> executablesByPlatform)
+        {
+            if (executablesByPlatform.Count == 0)
+            {
+                return;
+            }
+
+            JObject builds = entry[BuildsJsonKey] as JObject;
+            if (builds == null)
+            {
+                builds = new JObject();
+                entry[BuildsJsonKey] = builds;
+            }
+
+            foreach (string platform in _supportedPlatforms)
+            {
+                if (!executablesByPlatform.TryGetValue(platform, out string executableName))
+                {
+                    continue;
+                }
+                JObject build = builds[platform] as JObject;
+                if (build == null)
+                {
+                    build = new JObject();
+                    builds[platform] = build;
+                }
+                SetIfComputedOrDefault(build, ExecutableNameJsonKey, executableName);
+                // The ingestor cannot know the hosted download link, but seeding the key gives the
+                // catalog publisher (and hand-curators) an explicit field to fill — same convention
+                // as the flat entry's downloadUrl.
+                if (build[DownloadUrlJsonKey] == null)
+                {
+                    build[DownloadUrlJsonKey] = "";
+                }
+            }
         }
 
         private static string NormaliseType(string raw)

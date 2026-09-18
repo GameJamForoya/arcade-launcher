@@ -1,6 +1,7 @@
 using System.IO;
 using ArcadeLauncher.Core;
 using ArcadeLauncher.Launcher;
+using ArcadeLauncher.Services;
 using ArcadeLauncher.Sources;
 using UnityEngine;
 
@@ -16,14 +17,15 @@ namespace ArcadeLauncher.Core
         [Tooltip("Folder containing each game's subfolder (named after its id). Leave blank to use %AppData%/GameJamForoyar/Games. Per-entry localFolder in games.json overrides this.")]
         [SerializeField] string gamesRootOverride;
 
-        async void Awake()
+        void Awake()
         {
             ServiceLocator.Clear();
 
-            // Game source
+            // Game source. DriveCatalogGameSource degrades gracefully: no DriveCatalogConfig asset
+            // (or no network) means it falls through to the disk cache, then the baked games.json.
             IGameSource gameSource = useMockData
                 ? new MockGameSource()
-                : new LocalCacheGameSource();
+                : new DriveCatalogGameSource();
             ServiceLocator.Register(gameSource);
 
             // Game launcher (Windows-only for now; CanLaunch gates per-entry)
@@ -34,17 +36,17 @@ namespace ArcadeLauncher.Core
                 ? gamesRootOverride
                 : Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
                                "GameJamForoyar", "Games");
-            ServiceLocator.Register(new GamesRootPath(gamesRoot));
+            var gamesRootPath = new GamesRootPath(gamesRoot);
+            ServiceLocator.Register(gamesRootPath);
 
-            // Fetch games on startup
+            // Runtime downloads + installs into that same root. Registered before the first game
+            // fetch so the UI can query install state as soon as entries arrive.
+            ServiceLocator.Register<IDownloadManager>(new DownloadManager(gamesRootPath));
+
+            // GameListController performs the actual fetch. Fetching here too would double every
+            // remote catalog request and cache write — and double the timeout on an offline boot.
             Debug.Log($"[AppBootstrapper] Using game source: {gameSource.SourceName}");
             Debug.Log($"[AppBootstrapper] Games root: {gamesRoot}");
-            var games = await gameSource.GetGamesAsync();
-            Debug.Log($"[AppBootstrapper] Loaded {games.Count} games");
-            foreach (var game in games)
-            {
-                Debug.Log($"  - {game.Title} ({game.JamYear}) by {game.Developer}");
-            }
         }
 
         void OnDestroy()
