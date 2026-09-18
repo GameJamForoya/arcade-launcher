@@ -765,25 +765,6 @@ namespace ArcadeLauncher.EditorTools
             return fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Local twin of InstallScanner's name normaliser, so entry names can be matched against the
-        // id/title with the same forgiveness for spaces, casing and punctuation.
-        private static string InstallScanner.NormalizeForNameMatch(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return "";
-            }
-            StringBuilder builder = new(value.Length);
-            foreach (char c in value)
-            {
-                if (char.IsLetterOrDigit(c))
-                {
-                    builder.Append(char.ToLowerInvariant(c));
-                }
-            }
-            return builder.ToString();
-        }
-
         // Per-platform twin of SetIfComputedOrDefault: a discovered executable name wins, but a
         // hand-curated one is never overwritten with an empty string.
         private static void WriteBuilds(JObject entry, Dictionary<string, string> executablesByPlatform)
