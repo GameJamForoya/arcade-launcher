@@ -18,8 +18,8 @@ namespace ArcadeLauncher.EditorTools
 {
     /// <summary>
     /// Curator-facing ingest: turns a staging tree of <jam>/<game>/(zip + readme + images) folders
-    /// into entries in Assets/Game/Resources/games.json, copies cover art into Resources, and extracts
-    /// each build into %AppData%/GameJamForoyar/Games/<id>/. Idempotent — safe to re-run.
+    /// into entries in docs/games.json (the GitHub Pages catalog), copies cover art into Resources,
+    /// and extracts each build into %AppData%/GameJamForoyar/Games/<id>/. Idempotent — safe to re-run.
     ///
     /// Native builds may be split into windows/macos/linux subfolders (one zip each); a single zip
     /// directly in the game folder is the legacy layout and counts as the Windows build. Every
@@ -30,7 +30,8 @@ namespace ArcadeLauncher.EditorTools
     {
         private const string MenuPath = "Tools/GameJam Føroyar/Ingest curated games…";
         private const string LastPathPrefKey = "ArcadeLauncher.Ingest.LastStagingRoot";
-        private const string GamesJsonAssetPath = "Assets/Game/Resources/games.json";
+        // Project-root relative (not an Assets path): the catalog is served from the repo's docs/ folder.
+        private const string GamesJsonPath = "docs/games.json";
         private const string CoverArtAssetFolder = "Assets/Game/Resources/CoverArt";
         private const string CoverArtResourcesPrefix = "CoverArt/";
         private const string QrAssetFolder = "Assets/Game/Resources/QR";
@@ -1071,7 +1072,7 @@ namespace ArcadeLauncher.EditorTools
 
         private static JObject LoadGamesJson()
         {
-            string fullPath = Path.GetFullPath(GamesJsonAssetPath);
+            string fullPath = Path.GetFullPath(GamesJsonPath);
             if (!File.Exists(fullPath))
             {
                 JObject empty = new();
@@ -1092,7 +1093,7 @@ namespace ArcadeLauncher.EditorTools
 
         private static void SaveGamesJson(JObject root)
         {
-            string fullPath = Path.GetFullPath(GamesJsonAssetPath);
+            string fullPath = Path.GetFullPath(GamesJsonPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
             string serialised = root.ToString(Formatting.Indented);
             // UTF-8 without BOM matches Unity's expectation for text assets.

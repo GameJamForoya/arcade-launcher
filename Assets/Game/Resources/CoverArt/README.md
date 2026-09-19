@@ -1,18 +1,11 @@
-# Cover Art
+# Cover Art (local override)
 
-Drop a PNG/JPG here named `{game-id}.png` to set a game's cover. The id matches the `id` field in `Resources/games.json`.
+The catalog (`docs/games.json`) carries remote `coverArtUrl` values, so nothing needs to live here
+for a normal build. This folder is only a manual escape hatch.
 
-## Current ids
-- `trolls-escape`
-- `sheep-herder`
-- `wave-rider`
-- `puffin-post`
-- `fog-of-foroyar`
-- `chain-dance`
-- `grindabod`
-- `northern-lights`
-- `turf-house-builder`
-- `raven-flight`
+`GameDetailPanel` checks `Resources/CoverArt/{game-id}.png` *before* the remote URL. Drop a PNG/JPG here
+named after the entry's `id` and it wins over the hosted art, no catalog change required.
 
 ## Import settings
-Default Texture Type **Sprite (2D and UI)** is required (Unity defaults this for PNGs in 2D projects). Recommended ~512×288 (16:9), but the image is rendered with `preserveAspect`, so any aspect works.
+Texture Type **Sprite (2D and UI)** is required (Unity defaults this for PNGs in 2D projects).
+Recommended ~512×288 (16:9), but the image is rendered with `preserveAspect`, so any aspect works.

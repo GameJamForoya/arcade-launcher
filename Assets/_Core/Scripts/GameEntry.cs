@@ -5,7 +5,7 @@ namespace ArcadeLauncher.Core
 {
     public enum GameSourceType
     {
-        LocalCache,
+        RemoteCatalog,
         ItchIo,
         GGJ,
         Mock

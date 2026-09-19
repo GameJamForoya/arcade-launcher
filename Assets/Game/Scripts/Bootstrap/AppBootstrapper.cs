@@ -21,8 +21,8 @@ namespace ArcadeLauncher.Core
         {
             ServiceLocator.Clear();
 
-            // Game source. RemoteCatalogGameSource degrades gracefully: no RemoteCatalogConfig asset
-            // (or no network) means it falls through to the disk cache, then the baked games.json.
+            // Game source. RemoteCatalogGameSource fetches on every boot and keeps the last good
+            // catalog on disk, so an offline boot still lists the games already installed.
             IGameSource gameSource = useMockData
                 ? new MockGameSource()
                 : new RemoteCatalogGameSource();

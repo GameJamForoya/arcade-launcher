@@ -8,9 +8,8 @@ namespace ArcadeLauncher.Sources
     /// Assets/Game/Resources/RemoteCatalogConfig.asset so <see cref="RemoteCatalogGameSource"/> can
     /// find it via Resources.Load.
     ///
-    /// When the asset is missing or the url is blank the launcher is simply "unconfigured" and
-    /// falls back to the on-disk cache and the baked Resources catalog — that is a supported state,
-    /// not an error.
+    /// When the asset is missing or the url is blank the launcher is unconfigured: it logs an
+    /// error and shows whatever catalog it last fetched (or nothing, on a fresh install).
     /// </summary>
     [CreateAssetMenu(
         fileName = ResourcesPath,

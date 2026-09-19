@@ -12,12 +12,12 @@ using UnityEngine.Networking;
 namespace ArcadeLauncher.Sources
 {
     /// <summary>
-    /// Catalog source for the cabinet: fetches games.json from a hosted URL (e.g. GitHub Pages) at boot, caches
-    /// the raw JSON to disk so the cabinet still lists games while offline, and degrades to the
-    /// baked Resources copy as a last resort.
+    /// Catalog source for the cabinet: fetches games.json from a hosted URL (GitHub Pages) on every
+    /// boot and writes the raw JSON to disk. If the fetch fails the last good copy is used, so a
+    /// cabinet that boots offline still lists (and can launch) the games it already has installed.
     ///
-    /// Fallback chain (each step logs one line):
-    /// Catalog fetch → %AppData%/GameJamForoyar/catalog-cache.json → baked Resources games.json.
+    /// Catalog fetch → %AppData%/GameJamForoyar/catalog-cache.json. There is no baked fallback:
+    /// a cabinet that has never fetched successfully shows an empty list and logs why.
     /// <see cref="GetGamesAsync"/> never throws; the worst case is an empty list.
     /// </summary>
     public class RemoteCatalogGameSource : IGameSource
@@ -31,8 +31,6 @@ namespace ArcadeLauncher.Sources
         const string CacheFileName = "catalog-cache.json";
         const string CacheTempFileName = "catalog-cache.json.tmp";
         const int HttpStatusOk = 200;
-
-        readonly LocalCacheGameSource _bakedCatalogSource = new();
 
         public string SourceName => "RemoteCatalog";
 
@@ -56,21 +54,21 @@ namespace ArcadeLauncher.Sources
             var config = Resources.Load<RemoteCatalogConfig>(RemoteCatalogConfig.ResourcesPath);
             if (config == null || !config.IsConfigured)
             {
-                Debug.Log($"{LogPrefix} No remote catalog configured — using cached/baked catalog");
-                return await LoadFallbackCatalogAsync(ct);
+                Debug.LogError($"{LogPrefix} No remote catalog configured (Resources/{RemoteCatalogConfig.ResourcesPath}) — using cached catalog");
+                return LoadCachedCatalog();
             }
 
             string remoteJson = await TryFetchRemoteCatalogAsync(config, ct);
             if (remoteJson == null)
             {
-                return await LoadFallbackCatalogAsync(ct);
+                return LoadCachedCatalog();
             }
 
             List<GameEntry> remoteGames = TryParseCatalog(remoteJson);
             if (remoteGames == null)
             {
-                Debug.LogWarning($"{LogPrefix} Catalog response was not valid catalog JSON — using cached/baked catalog");
-                return await LoadFallbackCatalogAsync(ct);
+                Debug.LogWarning($"{LogPrefix} Catalog response was not valid catalog JSON — using cached catalog");
+                return LoadCachedCatalog();
             }
 
             Debug.Log($"{LogPrefix} Loaded {remoteGames.Count} games from remote catalog");
@@ -79,27 +77,19 @@ namespace ArcadeLauncher.Sources
         }
 
         /// <summary>
-        /// Cache file first, baked Resources copy second. Returns an empty list only when both fail.
+        /// The last successfully fetched catalog, or an empty list if there has never been one.
         /// </summary>
-        async Task<IReadOnlyList<GameEntry>> LoadFallbackCatalogAsync(CancellationToken ct)
+        static IReadOnlyList<GameEntry> LoadCachedCatalog()
         {
             List<GameEntry> cachedGames = TryLoadCachedCatalog();
-            if (cachedGames != null)
+            if (cachedGames == null)
             {
-                Debug.Log($"{LogPrefix} Loaded {cachedGames.Count} games from cache file {CachePath}");
-                return TagEntries(cachedGames);
-            }
-
-            Debug.Log($"{LogPrefix} Falling back to baked Resources catalog");
-            try
-            {
-                return await _bakedCatalogSource.GetGamesAsync(ct);
-            }
-            catch (JsonException e)
-            {
-                Debug.LogWarning($"{LogPrefix} Baked Resources catalog is unreadable ({e.Message}) — returning empty list");
+                Debug.LogWarning($"{LogPrefix} No usable catalog cache — returning empty list");
                 return Array.Empty<GameEntry>();
             }
+
+            Debug.Log($"{LogPrefix} Loaded {cachedGames.Count} games from cache file {CachePath}");
+            return TagEntries(cachedGames);
         }
 
         static async Task<string> TryFetchRemoteCatalogAsync(RemoteCatalogConfig config, CancellationToken ct)
@@ -254,7 +244,7 @@ namespace ArcadeLauncher.Sources
         {
             foreach (GameEntry game in games)
             {
-                game.Source = GameSourceType.LocalCache;
+                game.Source = GameSourceType.RemoteCatalog;
             }
             return games;
         }
