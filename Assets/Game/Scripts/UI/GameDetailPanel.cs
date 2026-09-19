@@ -46,7 +46,7 @@ namespace ArcadeLauncher.UI
         [SerializeField] float counterFontScale = 0.8f;
 
         [Header("Key hints")]
-        [Tooltip("Gap between the picture's side edges and the Q / E key labels that flank it.")]
+        [Tooltip("Gap between the picture's side edges and the ◄ / ► key labels that flank it.")]
         [SerializeField] float imageArrowGap = 16f;
         [Tooltip("Offset of the \"N  Next page\" hint, which hangs below the description's bottom-left corner.")]
         [SerializeField] Vector2 pageHintInset = new(0f, 12f);
@@ -97,6 +97,11 @@ namespace ArcadeLauncher.UI
         const string KeyboardSchemeGroup = "Keyboard&Mouse";
         const string GamepadSchemeGroup = "Gamepad";
         const string HintKeyActionSeparator = ": ";
+        // Keyboard labels for the carousel. The bindings are Left/Right Arrow (plus A/D), whose
+        // display strings ("Left Arrow") are far too long for the gutters, so on keyboard the
+        // hints show arrow glyphs instead. Pad labels still come from the bindings (LB / RB).
+        const string PreviousImageKeyboardLabel = "◄";
+        const string NextImageKeyboardLabel = "►";
         const int FirstPage = 1;
 
         IDownloadManager _downloadManager;
@@ -389,7 +394,7 @@ namespace ArcadeLauncher.UI
                 _previousImageHint.gameObject.SetActive(hasSeveralImages);
                 if (hasSeveralImages)
                 {
-                    _previousImageHint.text = BindingLabel(_previousImageAction);
+                    _previousImageHint.text = _hintsShowGamepad ? BindingLabel(_previousImageAction) : PreviousImageKeyboardLabel;
                 }
             }
             if (_nextImageHint != null)
@@ -397,7 +402,7 @@ namespace ArcadeLauncher.UI
                 _nextImageHint.gameObject.SetActive(hasSeveralImages);
                 if (hasSeveralImages)
                 {
-                    _nextImageHint.text = BindingLabel(_nextImageAction);
+                    _nextImageHint.text = _hintsShowGamepad ? BindingLabel(_nextImageAction) : NextImageKeyboardLabel;
                 }
             }
         }
