@@ -25,7 +25,9 @@ namespace ArcadeLauncher.UI
         [SerializeField] PlatformIconSet platformIcons;
         [Tooltip("Badge size in canvas pixels. The sheet is 16 px, point-filtered, so use a multiple of 16.")]
         [SerializeField] float platformIconSize = 32f;
-        [SerializeField] float platformIconSpacing = 6f;
+        [SerializeField] float platformIconSpacing = 10f;
+        [Tooltip("Tint applied to every badge so the white sheet does not outshine the title text.")]
+        [SerializeField] Color platformIconTint = new(0.7f, 0.7f, 0.7f, 1f);
         [Tooltip("Gap between the end of the title text and the first badge.")]
         [SerializeField] float platformIconGapAfterTitle = 24f;
 
@@ -131,6 +133,7 @@ namespace ArcadeLauncher.UI
 
             var image = badgeObject.GetComponent<Image>();
             image.sprite = sprite;
+            image.color = platformIconTint;
             image.preserveAspect = true;
             image.raycastTarget = false;
         }

@@ -295,7 +295,8 @@ MonoBehaviour:
   selectable: {fileID: 7108786069841252286}
   platformIcons: {fileID: 11400000, guid: 9e75eed3fbd6436bb38dcf3782b69168, type: 2}
   platformIconSize: 32
-  platformIconSpacing: 6
+  platformIconSpacing: 10
+  platformIconTint: {r: 0.7, g: 0.7, b: 0.7, a: 1}
   platformIconGapAfterTitle: 24
   selectedColor: {r: 0.77254903, g: 0.28235295, b: 0.21176471, a: 1}
   deselectedColor: {r: 0.6415094, g: 0.6415094, b: 0.6415094, a: 1}
