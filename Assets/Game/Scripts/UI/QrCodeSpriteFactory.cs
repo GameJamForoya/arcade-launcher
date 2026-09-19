@@ -24,7 +24,7 @@ namespace ArcadeLauncher.UI
         private static readonly Color32 DarkModule = new Color32(0, 0, 0, 255);
         private static readonly Color32 LightModule = new Color32(255, 255, 255, 255);
 
-        private static readonly Dictionary<string, Sprite> SpritesByUrl = new Dictionary<string, Sprite>();
+        private static readonly Dictionary<string, Sprite> _spritesByUrl = new Dictionary<string, Sprite>();
 
         /// <summary>Returns a QR sprite for <paramref name="url"/>, or null if it cannot be encoded.</summary>
         public static Sprite GetOrCreate(string url)
@@ -34,7 +34,7 @@ namespace ArcadeLauncher.UI
                 return null;
             }
 
-            bool hasCachedSprite = SpritesByUrl.TryGetValue(url, out Sprite cachedSprite) && cachedSprite != null;
+            bool hasCachedSprite = _spritesByUrl.TryGetValue(url, out Sprite cachedSprite) && cachedSprite != null;
             if (hasCachedSprite)
             {
                 return cachedSprite;
@@ -47,7 +47,7 @@ namespace ArcadeLauncher.UI
             }
 
             Sprite sprite = BuildSprite(modules);
-            SpritesByUrl[url] = sprite;
+            _spritesByUrl[url] = sprite;
             return sprite;
         }
 
