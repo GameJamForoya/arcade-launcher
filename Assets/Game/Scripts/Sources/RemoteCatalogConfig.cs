@@ -1,14 +1,14 @@
-﻿using UnityEngine;
+using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace ArcadeLauncher.Sources
 {
     /// <summary>
-    /// Locator for the Google Drive-hosted games.json catalog. No credential is involved — the
-    /// catalog file is shared as "anyone with the link" and fetched through Drive's keyless
-    /// direct-download endpoint. Create the asset at Assets/Game/Resources/RemoteCatalogConfig.asset
-    /// so <see cref="RemoteCatalogGameSource"/> can find it via Resources.Load.
+    /// Locator for the remotely hosted games.json catalog (GitHub Pages). Create the asset at
+    /// Assets/Game/Resources/RemoteCatalogConfig.asset so <see cref="RemoteCatalogGameSource"/> can
+    /// find it via Resources.Load.
     ///
-    /// When the asset is missing or the id is blank the launcher is simply "unconfigured" and
+    /// When the asset is missing or the url is blank the launcher is simply "unconfigured" and
     /// falls back to the on-disk cache and the baked Resources catalog — that is a supported state,
     /// not an error.
     /// </summary>
@@ -20,7 +20,8 @@ namespace ArcadeLauncher.Sources
         /// <summary>Resources-relative path (and default asset filename) the source loads from.</summary>
         public const string ResourcesPath = "RemoteCatalogConfig";
 
-        [Tooltip("Drive file id of games.json (the long id in the share link). The file must be shared as \"anyone with the link\".")]
+        [Tooltip("Full https URL of the hosted games.json, e.g. https://gamejamforoya.github.io/arcade-launcher/games.json. Must be publicly fetchable without auth.")]
+        [FormerlySerializedAs("catalogFileId")]
         [SerializeField] string catalogUrl;
 
         public string CatalogUrl => catalogUrl;

@@ -121,6 +121,16 @@ namespace ArcadeLauncher.Services
                 Debug.LogWarning($"{LogPrefix} '{entry.Id}': no downloadUrl recorded for platform '{platformKey}' — nothing to download.");
                 return false;
             }
+            // Rejecting malformed URLs here keeps the worker's Uri-based request construction
+            // throw-free (see StreamArchiveToDisk — requests are built from pre-parsed Uris so
+            // UnityWebRequest cannot decode %-escapes in the URL).
+            bool isAbsoluteHttpUrl = Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri parsedDownloadUrl)
+                && (parsedDownloadUrl.Scheme == Uri.UriSchemeHttp || parsedDownloadUrl.Scheme == Uri.UriSchemeHttps);
+            if (!isAbsoluteHttpUrl)
+            {
+                Debug.LogWarning($"{LogPrefix} '{entry.Id}': downloadUrl for platform '{platformKey}' is not an absolute http(s) url: '{downloadUrl}'.");
+                return false;
+            }
 
             GameInstallState currentState = GetState(entry.Id);
             if (IsAlreadyUnderway(currentState))
@@ -340,7 +350,8 @@ namespace ArcadeLauncher.Services
         /// </summary>
         private IEnumerator ProbeArchiveHeaders(DownloadJob job)
         {
-            UnityWebRequest probe = UnityWebRequest.Head(job.DownloadUrl);
+            // Pre-parsed Uri: the string overload re-normalizes and decodes %-escapes (see 16a2dbe).
+            UnityWebRequest probe = UnityWebRequest.Head(new Uri(job.DownloadUrl));
             probe.timeout = HeadProbeTimeoutSeconds;
             _activeRequest = probe;
 
@@ -379,7 +390,8 @@ namespace ArcadeLauncher.Services
             string archivePath = PartialArchivePathFor(job.GameId);
             DeletePartialArchive(job.GameId);
 
-            UnityWebRequest request = new UnityWebRequest(job.DownloadUrl, UnityWebRequest.kHttpVerbGET);
+            // Pre-parsed Uri: the string overload re-normalizes and decodes %-escapes (see 16a2dbe).
+            UnityWebRequest request = new UnityWebRequest(new Uri(job.DownloadUrl), UnityWebRequest.kHttpVerbGET);
             request.downloadHandler = new DownloadHandlerFile(archivePath) { removeFileOnAbort = true };
             request.timeout = NoTotalRequestTimeout;
             _activeRequest = request;

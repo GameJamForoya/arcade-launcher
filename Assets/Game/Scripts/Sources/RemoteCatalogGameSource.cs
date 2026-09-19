@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -110,10 +110,22 @@ namespace ArcadeLauncher.Sources
                 return null;
             }
 
-            string cacheBustSeparator = config.CatalogUrl.Contains("?") ? "&" : "?";
-            string requestUrl =
-                $"{config.CatalogUrl}{cacheBustSeparator}{CacheBustParameterName}={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
-            using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
+            if (!Uri.TryCreate(config.CatalogUrl, UriKind.Absolute, out Uri catalogUri))
+            {
+                Debug.LogWarning($"{LogPrefix} Configured catalog url is not an absolute url: '{config.CatalogUrl}'");
+                return null;
+            }
+
+            // UriBuilder puts the cache-bust into the query proper, so a fragment or an existing
+            // query in the configured url cannot swallow it; passing the Uri (not a string) stops
+            // UnityWebRequest re-normalizing any %-escapes it carries.
+            var urlBuilder = new UriBuilder(catalogUri);
+            string cacheBustQuery = $"{CacheBustParameterName}={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            urlBuilder.Query = string.IsNullOrEmpty(urlBuilder.Query)
+                ? cacheBustQuery
+                : $"{urlBuilder.Query.TrimStart('?')}&{cacheBustQuery}";
+
+            using (UnityWebRequest request = UnityWebRequest.Get(urlBuilder.Uri))
             {
                 request.timeout = RequestTimeoutSeconds;
 

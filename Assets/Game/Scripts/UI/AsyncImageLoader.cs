@@ -47,12 +47,23 @@ namespace ArcadeLauncher.UI
                 }
             }
 
+            // A catalog can carry anything here — a Resources-style path with no matching sprite, or
+            // a hand-edited typo. A non-absolute URL must fail as a logged warning, not as an
+            // uncaught UriFormatException mid-panel-population.
+            bool isAbsoluteHttpUrl = Uri.TryCreate(url, UriKind.Absolute, out Uri parsedUrl)
+                && (parsedUrl.Scheme == Uri.UriSchemeHttp || parsedUrl.Scheme == Uri.UriSchemeHttps);
+            if (!isAbsoluteHttpUrl)
+            {
+                Debug.LogWarning($"{LogPrefix} Not a loadable image url: '{url}'");
+                return;
+            }
+
             _loading.Add(url);
-            // Built from a pre-parsed Uri: UnityWebRequest's string overload re-normalizes the URL
+            // Built from the pre-parsed Uri: UnityWebRequest's string overload re-normalizes the URL
             // and decodes escapes like %2F/%2B/%23 (itch.zone art hashes contain all three), which
             // 404s or truncates the request. curl-verified URLs were failing in-game because of this.
             var request = new UnityWebRequest(
-                new Uri(url), UnityWebRequest.kHttpVerbGET, new DownloadHandlerTexture(true), null);
+                parsedUrl, UnityWebRequest.kHttpVerbGET, new DownloadHandlerTexture(true), null);
             var operation = request.SendWebRequest();
             operation.completed += _ =>
             {
