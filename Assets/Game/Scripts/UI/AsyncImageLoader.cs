@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Networking;
 
 namespace ArcadeLauncher.UI
@@ -19,10 +21,17 @@ namespace ArcadeLauncher.UI
         static readonly Dictionary<string, Sprite> _cache = new();
         static readonly HashSet<string> _loading = new();
 
+        /// <summary>
+        /// Calls back with a sprite for <paramref name="url"/>. Memory hits call back synchronously;
+        /// disk-cache hits and downloads call back on a later frame, always on the main thread.
+        /// Failures are logged and never call back. Must be called from the main thread.
+        /// </summary>
         public static void LoadImage(string url, Action<Sprite> onLoaded)
         {
             if (string.IsNullOrEmpty(url))
+            {
                 return;
+            }
 
             if (_cache.TryGetValue(url, out var cached))
             {
@@ -31,20 +40,8 @@ namespace ArcadeLauncher.UI
             }
 
             if (_loading.Contains(url))
-                return;
-
-            // Remote art (catalogs fetched from Drive carry https cover urls) is mirrored to disk so
-            // the cabinet still shows covers when it boots without a network.
-            bool isRemote = IsRemoteUrl(url);
-            if (isRemote)
             {
-                var diskCached = TryLoadFromDiskCache(url);
-                if (diskCached != null)
-                {
-                    _cache[url] = diskCached;
-                    onLoaded?.Invoke(diskCached);
-                    return;
-                }
+                return;
             }
 
             // A catalog can carry anything here — a Resources-style path with no matching sprite, or
@@ -59,6 +56,75 @@ namespace ArcadeLauncher.UI
             }
 
             _loading.Add(url);
+            ObserveFaults(LoadAsync(url, parsedUrl, onLoaded));
+        }
+
+        public static void ClearCache()
+        {
+            foreach (var sprite in _cache.Values)
+            {
+                if (sprite != null && sprite.texture != null)
+                {
+                    UnityEngine.Object.Destroy(sprite.texture);
+                }
+                if (sprite != null)
+                {
+                    UnityEngine.Object.Destroy(sprite);
+                }
+            }
+            _cache.Clear();
+        }
+
+        // Runs on the main thread between awaits: Unity's SynchronizationContext resumes every
+        // continuation there, so only the Task.Run bodies below execute on worker threads.
+        static async Task LoadAsync(string url, Uri parsedUrl, Action<Sprite> onLoaded)
+        {
+            try
+            {
+                // Remote art (catalogs fetched from Drive carry https cover urls) is mirrored to disk so
+                // the cabinet still shows covers when it boots without a network.
+                bool isRemote = IsRemoteUrl(url);
+                if (isRemote)
+                {
+                    Sprite diskCached = await TryLoadFromDiskCacheAsync(url);
+                    if (diskCached != null)
+                    {
+                        Publish(url, diskCached, onLoaded);
+                        return;
+                    }
+                }
+
+                Texture2D texture = await DownloadTextureAsync(url, parsedUrl);
+                if (texture == null)
+                {
+                    return;
+                }
+
+                Sprite sprite = CreateSprite(texture);
+                Publish(url, sprite, onLoaded);
+
+                if (isRemote)
+                {
+                    await TryWriteToDiskCacheAsync(url, texture);
+                }
+            }
+            finally
+            {
+                _loading.Remove(url);
+            }
+        }
+
+        static void Publish(string url, Sprite sprite, Action<Sprite> onLoaded)
+        {
+            _cache[url] = sprite;
+            // The url stays in _loading until the finally block, but the memory cache is already
+            // populated, so a LoadImage call from inside the callback returns synchronously.
+            onLoaded?.Invoke(sprite);
+        }
+
+        static Task<Texture2D> DownloadTextureAsync(string url, Uri parsedUrl)
+        {
+            var completion = new TaskCompletionSource<Texture2D>();
             // Built from the pre-parsed Uri: UnityWebRequest's string overload re-normalizes the URL
             // and decodes escapes like %2F/%2B/%23 (itch.zone art hashes contain all three), which
             // 404s or truncates the request. curl-verified URLs were failing in-game because of this.
@@ -67,64 +133,42 @@ namespace ArcadeLauncher.UI
             var operation = request.SendWebRequest();
             operation.completed += _ =>
             {
-                _loading.Remove(url);
-
                 if (request.result != UnityWebRequest.Result.Success)
                 {
                     Debug.LogWarning($"{LogPrefix} Failed to load {url}: {request.error}");
                     request.Dispose();
+                    completion.SetResult(null);
                     return;
                 }
 
-                var texture = DownloadHandlerTexture.GetContent(request);
-                var sprite = Sprite.Create(
-                    texture,
-                    new Rect(0, 0, texture.width, texture.height),
-                    new Vector2(0.5f, 0.5f));
-
-                if (isRemote)
-                    TryWriteToDiskCache(url, texture);
-
-                _cache[url] = sprite;
-                onLoaded?.Invoke(sprite);
+                Texture2D texture = DownloadHandlerTexture.GetContent(request);
                 request.Dispose();
+                completion.SetResult(texture);
             };
+            return completion.Task;
         }
 
-        public static void ClearCache()
+        static Sprite CreateSprite(Texture2D texture)
         {
-            foreach (var sprite in _cache.Values)
-            {
-                if (sprite != null && sprite.texture != null)
-                    UnityEngine.Object.Destroy(sprite.texture);
-                if (sprite != null)
-                    UnityEngine.Object.Destroy(sprite);
-            }
-            _cache.Clear();
+            return Sprite.Create(
+                texture,
+                new Rect(0, 0, texture.width, texture.height),
+                new Vector2(0.5f, 0.5f));
         }
 
-        static bool IsRemoteUrl(string url) =>
-            url.StartsWith(RemoteUrlPrefix, StringComparison.OrdinalIgnoreCase);
+        static bool IsRemoteUrl(string url)
+        {
+            return url.StartsWith(RemoteUrlPrefix, StringComparison.OrdinalIgnoreCase);
+        }
 
-        static Sprite TryLoadFromDiskCache(string url)
+        // The file read happens on a worker thread; decoding into a Texture2D is a Unity API and
+        // therefore stays on the main thread after the await.
+        static async Task<Sprite> TryLoadFromDiskCacheAsync(string url)
         {
             string cachePath = GetDiskCachePath(url);
-            if (!File.Exists(cachePath))
-                return null;
-
-            byte[] imageBytes;
-            try
+            byte[] imageBytes = await Task.Run(() => TryReadCachedBytes(cachePath));
+            if (imageBytes == null)
             {
-                imageBytes = File.ReadAllBytes(cachePath);
-            }
-            catch (IOException e)
-            {
-                Debug.LogWarning($"{LogPrefix} Could not read cached image {cachePath}: {e.Message}");
-                return null;
-            }
-            catch (UnauthorizedAccessException e)
-            {
-                Debug.LogWarning($"{LogPrefix} Could not read cached image {cachePath}: {e.Message}");
                 return null;
             }
 
@@ -136,19 +180,55 @@ namespace ArcadeLauncher.UI
                 return null;
             }
 
-            return Sprite.Create(
-                texture,
-                new Rect(0, 0, texture.width, texture.height),
-                new Vector2(0.5f, 0.5f));
+            return CreateSprite(texture);
         }
 
-        static void TryWriteToDiskCache(string url, Texture2D texture)
+        static byte[] TryReadCachedBytes(string cachePath)
         {
-            byte[] pngBytes = ImageConversion.EncodeToPNG(texture);
-            if (pngBytes == null || pngBytes.Length == 0)
-                return;
+            if (!File.Exists(cachePath))
+            {
+                return null;
+            }
 
+            try
+            {
+                return File.ReadAllBytes(cachePath);
+            }
+            catch (IOException e)
+            {
+                Debug.LogWarning($"{LogPrefix} Could not read cached image {cachePath}: {e.Message}");
+                return null;
+            }
+            catch (UnauthorizedAccessException e)
+            {
+                Debug.LogWarning($"{LogPrefix} Could not read cached image {cachePath}: {e.Message}");
+                return null;
+            }
+        }
+
+        // Copying the raw pixels out is a main-thread memcpy; the PNG encode (tens of milliseconds
+        // for a 1080p cover) and the write run on a worker thread. EncodeArrayToPNG is documented
+        // as thread safe, unlike EncodeToPNG.
+        static async Task TryWriteToDiskCacheAsync(string url, Texture2D texture)
+        {
+            byte[] rawPixels = texture.GetRawTextureData();
+            GraphicsFormat format = texture.graphicsFormat;
+            uint width = (uint)texture.width;
+            uint height = (uint)texture.height;
             string cachePath = GetDiskCachePath(url);
+
+            await Task.Run(() => EncodeAndWrite(url, cachePath, rawPixels, format, width, height));
+        }
+
+        static void EncodeAndWrite(string url, string cachePath, byte[] rawPixels, GraphicsFormat format, uint width, uint height)
+        {
+            byte[] pngBytes = ImageConversion.EncodeArrayToPNG(rawPixels, format, width, height);
+            if (pngBytes == null || pngBytes.Length == 0)
+            {
+                Debug.LogWarning($"{LogPrefix} Could not encode {url} as PNG (format {format}); not cached.");
+                return;
+            }
+
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath));
@@ -164,11 +244,28 @@ namespace ArcadeLauncher.UI
             }
         }
 
-        static string GetDiskCachePath(string url) => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            AppDataFolderName,
-            ImageCacheFolderName,
-            ComputeUrlHash(url) + CachedImageExtension);
+        // Fire-and-forget with the fault surfaced: an unobserved exception inside an async load
+        // would otherwise vanish silently and leave the url stuck in _loading.
+        static async void ObserveFaults(Task task)
+        {
+            try
+            {
+                await task;
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+        }
+
+        static string GetDiskCachePath(string url)
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                AppDataFolderName,
+                ImageCacheFolderName,
+                ComputeUrlHash(url) + CachedImageExtension);
+        }
 
         static string ComputeUrlHash(string url)
         {
@@ -177,7 +274,9 @@ namespace ArcadeLauncher.UI
                 byte[] hash = sha1.ComputeHash(Encoding.UTF8.GetBytes(url));
                 var builder = new StringBuilder(hash.Length * 2);
                 foreach (byte hashByte in hash)
+                {
                     builder.Append(hashByte.ToString("x2"));
+                }
                 return builder.ToString();
             }
         }
