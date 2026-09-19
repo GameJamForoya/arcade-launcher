@@ -58,6 +58,9 @@ try {
     Start-Sleep -Seconds $WaitSeconds
     $player.Refresh()
     $handle = $player.MainWindowHandle
+    if ($handle -eq [IntPtr]::Zero) {
+        throw "The player has no main window after $WaitSeconds s (still starting, crashed, or fullscreen-exclusive). Raise -WaitSeconds or check Player.log."
+    }
 
     $rect = New-Object ScreenshotNative+RECT
     [ScreenshotNative]::GetWindowRect($handle, [ref]$rect) | Out-Null

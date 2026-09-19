@@ -83,10 +83,13 @@ namespace ArcadeLauncher.UI
         GameEntry _shownEntry;
         float _downloadProgressRefreshTimer;
 
-        // Cover art first, then every screenshot. Index wraps at both ends.
+        // Cover art first, then every screenshot. Index wraps at both ends. A local Resources cover
+        // takes slot 0 under a marker string instead of a URL.
+        const string LocalCoverMarker = "local:cover";
         readonly List<string> _imageUrls = new();
         int _imageIndex;
         string _requestedImageUrl;
+        Sprite _localCoverSprite;
         TextMeshProUGUI _imageCounter;
         TextMeshProUGUI _pageCounter;
         TextMeshProUGUI _previousImageHint;
@@ -113,6 +116,8 @@ namespace ArcadeLauncher.UI
             if (_nextImageAction != null) _nextImageAction.performed += OnNextImagePerformed;
             if (_nextPageAction != null) _nextPageAction.performed += OnNextPagePerformed;
 
+            InputSystem.onActionChange += OnAnyActionChange;
+
             // Hints read their labels from the actions, which only exist from here on.
             UpdateImageCounter();
             UpdatePageCounter();
@@ -130,6 +135,7 @@ namespace ArcadeLauncher.UI
 
         void OnDestroy()
         {
+            InputSystem.onActionChange -= OnAnyActionChange;
             if (_previousImageAction != null) _previousImageAction.performed -= OnPreviousImagePerformed;
             if (_nextImageAction != null) _nextImageAction.performed -= OnNextImagePerformed;
             if (_nextPageAction != null) _nextPageAction.performed -= OnNextPagePerformed;
@@ -137,8 +143,6 @@ namespace ArcadeLauncher.UI
 
         void Update()
         {
-            RefreshHintsIfDeviceChanged();
-
             if (_downloadManager == null || _shownEntry == null) return;
             if (_downloadManager.GetState(_shownEntry.Id) != GameInstallState.Downloading) return;
 
@@ -215,14 +219,9 @@ namespace ArcadeLauncher.UI
                 return;
             }
 
-            // Local cover art: drop a sprite at Resources/CoverArt/{id}.png and it auto-loads
-            var localSprite = TryLoadLocalCover(entry.Id);
-            if (localSprite != null)
-            {
-                ApplyCover(localSprite);
-                return;
-            }
-
+            // Local cover art: a sprite at Resources/CoverArt/{id}.png replaces the remote cover
+            // but keeps its place as image 1, so the screenshots behind it stay reachable.
+            _localCoverSprite = TryLoadLocalCover(entry.Id);
             CollectImageUrls(entry);
             ShowImageAt(0);
         }
@@ -231,7 +230,11 @@ namespace ArcadeLauncher.UI
 
         void CollectImageUrls(GameEntry entry)
         {
-            if (!string.IsNullOrEmpty(entry.CoverArtUrl))
+            if (_localCoverSprite != null)
+            {
+                _imageUrls.Add(LocalCoverMarker);
+            }
+            else if (!string.IsNullOrEmpty(entry.CoverArtUrl))
             {
                 _imageUrls.Add(entry.CoverArtUrl);
             }
@@ -250,12 +253,8 @@ namespace ArcadeLauncher.UI
             _imageUrls.Clear();
             _imageIndex = 0;
             _requestedImageUrl = null;
-            if (coverImage != null)
-            {
-                coverImage.sprite = null;
-                coverImage.enabled = false;
-            }
-            if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
+            _localCoverSprite = null;
+            ShowPlaceholder();
             UpdateImageCounter();
         }
 
@@ -272,10 +271,31 @@ namespace ArcadeLauncher.UI
             _requestedImageUrl = url;
             UpdateImageCounter();
 
+            if (string.Equals(url, LocalCoverMarker, System.StringComparison.Ordinal))
+            {
+                ApplyCover(_localCoverSprite);
+                return;
+            }
+
+            // Show the placeholder until this image arrives. The loader never calls back on a
+            // failed fetch, so leaving the previous picture up would label it with the wrong index.
+            // Cached images call back synchronously, so there is no flash for those.
+            ShowPlaceholder();
+
             // The loader drops duplicate in-flight requests for a URL and only calls the first
             // subscriber, so the callback checks the URL (not a request id): flipping away and back
             // to a still-loading image must still land when that first request completes.
             AsyncImageLoader.LoadImage(url, sprite => OnImageLoaded(url, sprite));
+        }
+
+        void ShowPlaceholder()
+        {
+            if (coverImage != null)
+            {
+                coverImage.sprite = null;
+                coverImage.enabled = false;
+            }
+            if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
         }
 
         void OnImageLoaded(string url, Sprite sprite)
@@ -408,24 +428,22 @@ namespace ArcadeLauncher.UI
             return string.IsNullOrEmpty(label) ? "?" : label;
         }
 
-        // A pad that was touched more recently than the keyboard switches the hints to pad labels.
-        void RefreshHintsIfDeviceChanged()
+        // Hints follow whichever device last *performed* an action (navigate, submit, Q/E/N...).
+        // Device update times are useless for this: an idle pad reports every frame, which would
+        // pin the hints to pad labels while the player types.
+        void OnAnyActionChange(object actionObject, InputActionChange change)
         {
-            bool gamepadIsLatest = IsGamepadMostRecentDevice();
-            if (gamepadIsLatest == _hintsShowGamepad) return;
+            if (change != InputActionChange.ActionPerformed) return;
+            var action = actionObject as InputAction;
+            InputDevice device = action?.activeControl?.device;
+            if (device == null) return;
 
-            _hintsShowGamepad = gamepadIsLatest;
+            bool performedOnGamepad = device is Gamepad;
+            if (performedOnGamepad == _hintsShowGamepad) return;
+
+            _hintsShowGamepad = performedOnGamepad;
             UpdateImageCounter();
             UpdatePageCounter();
-        }
-
-        static bool IsGamepadMostRecentDevice()
-        {
-            Gamepad gamepad = Gamepad.current;
-            if (gamepad == null) return false;
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard == null) return true;
-            return gamepad.lastUpdateTime > keyboard.lastUpdateTime;
         }
 
         // ---- Counters (built in code so the scene stays as authored) -------------------------
