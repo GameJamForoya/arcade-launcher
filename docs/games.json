@@ -25,7 +25,10 @@
           "executableName": "Ball Stacks.app",
           "downloadUrl": "https://drive.usercontent.google.com/download?id=1x8EARv2PfRfYFE_KIe0ai-uYvZ48FbF2&export=download&confirm=t"
         }
-      }
+      },
+      "controls": [
+        "controller"
+      ]
     },
     {
       "id": "air-draft",
@@ -54,7 +57,11 @@
           "executableName": "Air Draft.x86_64",
           "downloadUrl": "https://drive.usercontent.google.com/download?id=1vwKDZzVQexi0Mno2N5S2GEnpLDuSFQk6&export=download&confirm=t"
         }
-      }
+      },
+      "controls": [
+        "keyboard",
+        "controller"
+      ]
     },
     {
       "id": "the-leap",
@@ -79,7 +86,10 @@
           "executableName": "",
           "downloadUrl": "https://drive.usercontent.google.com/download?id=1SL7P6Fjkt4nV362CWe4CKVRP4Kj1la1u&export=download&confirm=t"
         }
-      }
+      },
+      "controls": [
+        "keyboard"
+      ]
     },
     {
       "id": "pogo-brawl",
@@ -108,7 +118,11 @@
           "executableName": "",
           "downloadUrl": "https://drive.usercontent.google.com/download?id=1ZtfI_GBf9W2Hz-mp9zaXuD6msk5Wpg9J&export=download&confirm=t"
         }
-      }
+      },
+      "controls": [
+        "keyboard",
+        "controller"
+      ]
     },
     {
       "id": "apogee",
@@ -126,7 +140,10 @@
       "pageUrl": "https://michaelgyp.itch.io/apogee",
       "executableName": "",
       "type": "web",
-      "playUrl": "https://html-classic.itch.zone/html/19224307/index.html?v=1789317188"
+      "playUrl": "https://html-classic.itch.zone/html/19224307/index.html?v=1789317188",
+      "controls": [
+        "keyboard"
+      ]
     },
     {
       "id": "galdrava",
@@ -141,7 +158,11 @@
       "pageUrl": "https://kruseio.itch.io/galdrava",
       "executableName": "",
       "type": "web",
-      "playUrl": "https://html-classic.itch.zone/html/19223704/gamejam-2026-gh-pages/index.html?v=1789314697"
+      "playUrl": "https://html-classic.itch.zone/html/19223704/gamejam-2026-gh-pages/index.html?v=1789314697",
+      "controls": [
+        "keyboard",
+        "controller"
+      ]
     },
     {
       "id": "upp-a-plass",
@@ -156,7 +177,10 @@
       "pageUrl": "https://wizcatstudio.itch.io/upp-plss",
       "executableName": "",
       "type": "web",
-      "playUrl": "https://html-classic.itch.zone/html/19224384/TestBuild017/index.html?v=1789317417"
+      "playUrl": "https://html-classic.itch.zone/html/19224384/TestBuild017/index.html?v=1789317417",
+      "controls": [
+        "keyboard"
+      ]
     },
     {
       "id": "ascentvr",
@@ -173,7 +197,10 @@
       "pageUrl": "https://kristjang.itch.io/ascentvr",
       "executableName": "",
       "type": "vr",
-      "playUrl": "https://kristjang.itch.io/ascentvr"
+      "playUrl": "https://kristjang.itch.io/ascentvr",
+      "controls": [
+        "vr"
+      ]
     }
   ]
 }
