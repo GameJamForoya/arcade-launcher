@@ -79,8 +79,7 @@ namespace ArcadeLauncher.UI
         static bool IsVisibleOnHost(GameEntry entry)
         {
             bool isWeb = string.Equals(entry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase);
-            bool isExternal = string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase);
-            if (isWeb || isExternal) return true;
+            if (isWeb || GameTypeRules.OpensPlayUrlInBrowser(entry.Type)) return true;
 
             bool isExeType = string.IsNullOrEmpty(entry.Type) || string.Equals(entry.Type, GameType.Exe, System.StringComparison.OrdinalIgnoreCase);
             if (!isExeType) return false;
@@ -271,7 +270,7 @@ namespace ArcadeLauncher.UI
         {
             if (string.IsNullOrEmpty(entry.PlayUrl))
             {
-                Debug.LogWarning($"[GameListController] {entry.Title}: type='external' but PlayUrl is empty.");
+                Debug.LogWarning($"[GameListController] {entry.Title}: type='{entry.Type}' but PlayUrl is empty.");
                 return;
             }
 
@@ -283,11 +282,11 @@ namespace ArcadeLauncher.UI
         {
             if (entry == null) return;
 
-            // External entries (VR, phone, anything the launcher cannot run itself): Enter opens the
-            // game's own page in the system browser, where the developer's download and setup
-            // instructions live. Cross-platform via Application.OpenURL; the launcher does not own
-            // the browser process, so panic-kill is not involved.
-            if (string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase))
+            // External (phone) and VR entries: Enter opens the game's own page in the system
+            // browser, where the developer's download and setup instructions live. Cross-platform
+            // via Application.OpenURL; the launcher does not own the browser process, so
+            // panic-kill is not involved.
+            if (GameTypeRules.OpensPlayUrlInBrowser(entry.Type))
             {
                 OpenExternalPage(entry);
                 return;

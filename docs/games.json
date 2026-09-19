@@ -164,7 +164,7 @@
       "developer": "Kristjan G.",
       "jamYear": 2026,
       "jamName": "GameJam Føroyar",
-      "description": "Use your hands to press elevator buttons to ascend the tower. Timer starts when you ascend to the first floor from the main menu room.\n\nVR only — Meta Quest 2 (or compatible standalone headset) with hand tracking, and a roomscale play space of at least 2x3 m. Press Enter (or scan the QR) to open the game's page and grab the APK.",
+      "description": "Use your hands to press elevator buttons to ascend the tower. Timer starts when you ascend to the first floor from the main menu room.\n\nVR only — Meta Quest 2 (or compatible standalone headset) with hand tracking, and a roomscale play space of at least 2x3 m. Press Enter to open the game's page and grab the APK.",
       "coverArtUrl": "https://img.itch.zone/aW1hZ2UvNTAwNTIyMC8yOTk2NjMwNy5qcGc=/original/8bM7X3.jpg",
       "screenshotUrls": [
         "https://img.itch.zone/aW1hZ2UvNTAwNTIyMC8yOTk2NjMwOC5qcGc=/original/TaapCX.jpg"
@@ -172,7 +172,7 @@
       "downloadUrl": "",
       "pageUrl": "https://kristjang.itch.io/ascentvr",
       "executableName": "",
-      "type": "external",
+      "type": "vr",
       "playUrl": "https://kristjang.itch.io/ascentvr"
     }
   ]

@@ -84,11 +84,13 @@ namespace ArcadeLauncher.UI
             }
 
             bool isExternal = string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase);
+            bool isVr = string.Equals(entry.Type, GameType.Vr, System.StringComparison.OrdinalIgnoreCase);
             bool isWeb = string.Equals(entry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase);
             if (playPrompt != null)
             {
                 playPrompt.gameObject.SetActive(true);
-                if (isExternal) playPrompt.text = "Press Enter to open the game's page";
+                if (isExternal) playPrompt.text = "Scan the QR, or press Enter to open the game's page";
+                else if (isVr) playPrompt.text = "Press Enter to open the game's page";
                 else if (isWeb) playPrompt.text = "Press Enter to Play";
                 else playPrompt.text = BuildExeStatusText(entry);
             }
@@ -99,8 +101,9 @@ namespace ArcadeLauncher.UI
                 coverImage.enabled = false;
                 if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
 
-                // External entries: a QR of playUrl (encoded at runtime) replaces the cover art.
-                // Enter opens the same URL in the system browser; the QR is the phone shortcut.
+                // External (phone) entries: a QR of playUrl (encoded at runtime) replaces the cover
+                // art so the player can scan it. VR entries deliberately keep their cover art — a
+                // headset game is installed from a computer, so a phone code would be useless.
                 if (isExternal)
                 {
                     Sprite qrSprite = QrCodeSpriteFactory.GetOrCreate(entry.PlayUrl);
@@ -147,9 +150,9 @@ namespace ArcadeLauncher.UI
         {
             if (_shownEntry == null || playPrompt == null) return;
 
-            bool isExternal = string.Equals(_shownEntry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase);
+            bool opensInBrowser = GameTypeRules.OpensPlayUrlInBrowser(_shownEntry.Type);
             bool isWeb = string.Equals(_shownEntry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase);
-            if (isExternal || isWeb) return;
+            if (opensInBrowser || isWeb) return;
 
             playPrompt.text = BuildExeStatusText(_shownEntry);
         }

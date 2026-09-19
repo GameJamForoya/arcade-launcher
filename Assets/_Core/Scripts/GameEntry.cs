@@ -13,12 +13,26 @@ namespace ArcadeLauncher.Core
 
     // "exe"   — native build extracted to %AppData%/.../Games/<id>/, launched via WindowsGameLauncher
     // "web"   — itch HTML5 / browser game, launched via Chrome in kiosk mode pointing at PlayUrl
-    // "external" — phone/mobile/non-cabinet game; launcher shows a QR on the detail panel and submit no-ops
+    // "external" — phone/mobile game; detail panel shows a QR of PlayUrl (scan on the phone) and
+    //               submit opens PlayUrl in the system browser
+    // "vr"       — headset game (e.g. Quest APK) that must be installed from a computer; submit opens
+    //               PlayUrl in the system browser, no QR because a phone cannot install it
     public static class GameType
     {
         public const string Exe = "exe";
         public const string Web = "web";
         public const string External = "external";
+        public const string Vr = "vr";
+    }
+
+    // Types the launcher cannot run itself: submit hands the player to PlayUrl in the browser.
+    public static class GameTypeRules
+    {
+        public static bool OpensPlayUrlInBrowser(string type)
+        {
+            return string.Equals(type, GameType.External, System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(type, GameType.Vr, System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     // Platform keys for GameEntry.Builds. These double as the staging subfolder names curators

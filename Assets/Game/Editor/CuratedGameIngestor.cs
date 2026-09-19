@@ -181,7 +181,7 @@ namespace ArcadeLauncher.EditorTools
             string gameType = NormaliseType(readme.Type);
 
             // Validate URL requirements per type up-front so we fail fast before doing any work.
-            if (gameType == GameType.Web || gameType == GameType.External)
+            if (gameType == GameType.Web || gameType == GameType.External || gameType == GameType.Vr)
             {
                 if (string.IsNullOrEmpty(readme.PlayUrl))
                 {
@@ -807,6 +807,10 @@ namespace ArcadeLauncher.EditorTools
                 case "phone":
                 case "qr":
                     return GameType.External;
+                case "vr":
+                case "headset":
+                case "quest":
+                    return GameType.Vr;
                 default:
                     Debug.LogWarning($"{LogPrefix} unknown type='{raw}' — defaulting to '{GameType.Exe}'.");
                     return GameType.Exe;
