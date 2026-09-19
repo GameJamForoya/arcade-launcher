@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d93aa524a718438cb512841c306a8a9b, type: 3}
+  m_Name: ControlIconSet
+  m_EditorClassIdentifier: 
+  _keyboard: {fileID: -1669438834, guid: 0025e1c6ad5748d48bc2b9677626226a, type: 3}
+  _controller: {fileID: -1826077713, guid: 0025e1c6ad5748d48bc2b9677626226a, type: 3}
+  _vr: {fileID: 249591665, guid: 0025e1c6ad5748d48bc2b9677626226a, type: 3}

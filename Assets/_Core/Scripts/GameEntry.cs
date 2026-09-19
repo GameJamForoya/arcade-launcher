@@ -121,6 +121,38 @@ namespace ArcadeLauncher.Core
         }
     }
 
+    // Keys for the input badges overlaid on the detail picture. Authored per entry in games.json
+    // ("controls"); nothing in the build tells us this. Order here is display order.
+    public static class ControlKind
+    {
+        public const string Keyboard = "keyboard";
+        public const string Controller = "controller";
+        public const string Vr = "vr";
+
+        private static readonly string[] DisplayOrder = { Keyboard, Controller, Vr };
+
+        /// <summary>The entry's control badges in display order, deduplicated; empty if unauthored.</summary>
+        public static IReadOnlyList<string> Resolve(GameEntry entry)
+        {
+            var ordered = new List<string>();
+            bool hasControls = entry.Controls != null && entry.Controls.Count > 0;
+            if (!hasControls)
+            {
+                return ordered;
+            }
+
+            var wanted = new HashSet<string>(entry.Controls, System.StringComparer.OrdinalIgnoreCase);
+            foreach (string key in DisplayOrder)
+            {
+                if (wanted.Contains(key))
+                {
+                    ordered.Add(key);
+                }
+            }
+            return ordered;
+        }
+    }
+
     public class GameBuild
     {
         [JsonProperty("executableName")] public string ExecutableName { get; set; }
@@ -151,6 +183,8 @@ namespace ArcadeLauncher.Core
         // Optional. Display-platform keys (see DisplayPlatform) for the list-row badges. Leave it out
         // and the launcher derives the badges from "builds" and "type"; set it for phone games.
         [JsonProperty("platforms")] public List<string> Platforms { get; set; }
+        // Optional. Control-kind keys (see ControlKind) for the input badges on the detail panel.
+        [JsonProperty("controls")] public List<string> Controls { get; set; }
         [JsonIgnore] public GameSourceType Source { get; set; }
     }
 }
