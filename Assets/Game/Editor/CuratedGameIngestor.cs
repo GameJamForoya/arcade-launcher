@@ -4,10 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using ArcadeLauncher.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -34,11 +32,6 @@ namespace ArcadeLauncher.EditorTools
         private const string GamesJsonPath = "docs/games.json";
         private const string CoverArtAssetFolder = "Assets/Game/Resources/CoverArt";
         private const string CoverArtResourcesPrefix = "CoverArt/";
-        private const string QrAssetFolder = "Assets/Game/Resources/QR";
-        private const string QrResourcesPrefix = "QR/";
-        // Free public QR API. Curator-time only — the generated PNGs ship locally so the runtime
-        // build has no internet dependency and no QR-encoder DLL.
-        private const string QrApiUrlTemplate = "https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=4&data={0}";
         private const string LogPrefix = "[Ingest]";
         // The cabinet is Windows, so only this platform's zip is unpacked into AppData. A mac or linux
         // cabinet re-runs this ingest with TargetPlatform pointed at its own GamePlatform value.
@@ -87,7 +80,6 @@ namespace ArcadeLauncher.EditorTools
                 "GameJamForoyar", "Games");
             Directory.CreateDirectory(gamesRoot);
             Directory.CreateDirectory(CoverArtAssetFolder);
-            Directory.CreateDirectory(QrAssetFolder);
 
             JObject root = LoadGamesJson();
             JArray games = root["games"] as JArray;
@@ -268,18 +260,6 @@ namespace ArcadeLauncher.EditorTools
                         screenshotResourceUrls.Add(CoverArtResourcesPrefix + baseName);
                     }
                     n++;
-                }
-            }
-
-            // External entries: bake a QR PNG of playUrl so the cabinet can render it without
-            // a runtime QR encoder. Failure here is a warning, not a hard skip — curator can
-            // hand-place a PNG at Assets/Game/Resources/QR/<id>.png and re-run.
-            if (gameType == GameType.External)
-            {
-                bool ok = TryGenerateQr(readme.PlayUrl, id, title);
-                if (!ok)
-                {
-                    Debug.LogWarning($"{LogPrefix} '{title}': QR generation failed — drop a PNG at {QrAssetFolder}/{id}.png manually if needed.");
                 }
             }
 
@@ -830,42 +810,6 @@ namespace ArcadeLauncher.EditorTools
                 default:
                     Debug.LogWarning($"{LogPrefix} unknown type='{raw}' — defaulting to '{GameType.Exe}'.");
                     return GameType.Exe;
-            }
-        }
-
-        private static bool TryGenerateQr(string url, string id, string title)
-        {
-            string destPath = Path.Combine(QrAssetFolder, $"{id}.png");
-            string requestUrl = string.Format(QrApiUrlTemplate, Uri.EscapeDataString(url));
-            try
-            {
-                using HttpClient client = new();
-                client.Timeout = TimeSpan.FromSeconds(10);
-                byte[] png = client.GetByteArrayAsync(requestUrl).GetAwaiter().GetResult();
-                if (png == null || png.Length < 100)
-                {
-                    Debug.LogWarning($"{LogPrefix} '{title}': QR API returned suspicious payload ({png?.Length ?? 0} bytes).");
-                    return false;
-                }
-                Directory.CreateDirectory(QrAssetFolder);
-                File.WriteAllBytes(destPath, png);
-                Debug.Log($"{LogPrefix} '{title}': wrote QR for {url} → {destPath}");
-                return true;
-            }
-            catch (HttpRequestException e)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': QR fetch failed (network) — {e.Message}.");
-                return false;
-            }
-            catch (TaskCanceledException e)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': QR fetch timed out — {e.Message}.");
-                return false;
-            }
-            catch (IOException e)
-            {
-                Debug.LogWarning($"{LogPrefix} '{title}': QR write failed — {e.Message}.");
-                return false;
             }
         }
 

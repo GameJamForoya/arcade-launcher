@@ -16,7 +16,8 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $CheckRoot = "$ProjectRoot-compilecheck"
 $LogPath = Join-Path $CheckRoot 'compile.log'
 $MirroredFolders = @('Assets', 'Packages', 'ProjectSettings')
-$RobocopyFilesCopiedOrLess = 1
+# robocopy exit codes below 8 are success variants (files copied, extras removed, etc.).
+$RobocopyFirstFailureCode = 8
 
 if (-not (Test-Path $UnityExe)) {
     Write-Error "Unity $UnityVersion not found at $UnityExe. Update `$UnityVersion in this script."
@@ -26,7 +27,7 @@ New-Item -ItemType Directory -Force $CheckRoot | Out-Null
 foreach ($folder in $MirroredFolders) {
     # /MIR keeps the copy identical, so deletions in the working tree are mirrored too.
     robocopy (Join-Path $ProjectRoot $folder) (Join-Path $CheckRoot $folder) /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -gt $RobocopyFilesCopiedOrLess) {
+    if ($LASTEXITCODE -ge $RobocopyFirstFailureCode) {
         Write-Error "robocopy failed for $folder with exit code $LASTEXITCODE"
     }
 }
