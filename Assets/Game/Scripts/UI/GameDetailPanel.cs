@@ -88,7 +88,7 @@ namespace ArcadeLauncher.UI
             if (playPrompt != null)
             {
                 playPrompt.gameObject.SetActive(true);
-                if (isExternal) playPrompt.text = "Scan to play on your phone";
+                if (isExternal) playPrompt.text = "Press Enter to open the game's page";
                 else if (isWeb) playPrompt.text = "Press Enter to Play";
                 else playPrompt.text = BuildExeStatusText(entry);
             }
@@ -99,8 +99,8 @@ namespace ArcadeLauncher.UI
                 coverImage.enabled = false;
                 if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
 
-                // External entries: a QR of playUrl (encoded at runtime) replaces the cover art
-                // entirely. The QR *is* the call to action for these games.
+                // External entries: a QR of playUrl (encoded at runtime) replaces the cover art.
+                // Enter opens the same URL in the system browser; the QR is the phone shortcut.
                 if (isExternal)
                 {
                     Sprite qrSprite = QrCodeSpriteFactory.GetOrCreate(entry.PlayUrl);

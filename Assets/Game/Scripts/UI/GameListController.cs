@@ -267,15 +267,29 @@ namespace ArcadeLauncher.UI
             }
         }
 
+        static void OpenExternalPage(GameEntry entry)
+        {
+            if (string.IsNullOrEmpty(entry.PlayUrl))
+            {
+                Debug.LogWarning($"[GameListController] {entry.Title}: type='external' but PlayUrl is empty.");
+                return;
+            }
+
+            Debug.Log($"[GameListController] {entry.Title}: opening external page {entry.PlayUrl}");
+            Application.OpenURL(entry.PlayUrl);
+        }
+
         async void OnItemSubmitted(GameEntry entry)
         {
             if (entry == null) return;
 
-            // External (phone/mobile) entries are display-only — the QR on the detail panel IS
-            // the interaction. Pressing Enter does nothing visible from the UI side.
+            // External entries (VR, phone, anything the launcher cannot run itself): Enter opens the
+            // game's own page in the system browser, where the developer's download and setup
+            // instructions live. Cross-platform via Application.OpenURL; the launcher does not own
+            // the browser process, so panic-kill is not involved.
             if (string.Equals(entry.Type, GameType.External, System.StringComparison.OrdinalIgnoreCase))
             {
-                Debug.Log($"[GameListController] {entry.Title}: external entry, see QR on detail panel.");
+                OpenExternalPage(entry);
                 return;
             }
 
