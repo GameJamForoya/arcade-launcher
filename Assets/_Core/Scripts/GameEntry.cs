@@ -45,6 +45,82 @@ namespace ArcadeLauncher.Core
         public const string Linux = "linux";
     }
 
+    // Keys for the platform badges shown next to a title. The first three equal the GamePlatform
+    // build keys; the rest describe where a non-downloadable game runs. Order here is display order.
+    public static class DisplayPlatform
+    {
+        public const string Windows = GamePlatform.Windows;
+        public const string MacOs = GamePlatform.MacOs;
+        public const string Linux = GamePlatform.Linux;
+        public const string Web = "web";
+        public const string Android = "android";
+        public const string Ios = "ios";
+        public const string Vr = "vr";
+
+        private static readonly string[] DisplayOrder = { Windows, MacOs, Linux, Web, Android, Ios, Vr };
+
+        /// <summary>
+        /// The badges an entry should show, in display order. An explicit "platforms" list in the
+        /// catalog wins (needed for phone games, which carry no build keys); otherwise the list is
+        /// derived from the build keys and the game type.
+        /// </summary>
+        public static IReadOnlyList<string> Resolve(GameEntry entry)
+        {
+            var wanted = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            bool hasExplicitList = entry.Platforms != null && entry.Platforms.Count > 0;
+            if (hasExplicitList)
+            {
+                wanted.UnionWith(entry.Platforms);
+            }
+            else
+            {
+                AddDerivedPlatforms(entry, wanted);
+            }
+
+            var ordered = new List<string>(wanted.Count);
+            foreach (string key in DisplayOrder)
+            {
+                if (wanted.Contains(key))
+                {
+                    ordered.Add(key);
+                }
+            }
+            return ordered;
+        }
+
+        private static void AddDerivedPlatforms(GameEntry entry, HashSet<string> into)
+        {
+            string type = string.IsNullOrEmpty(entry.Type) ? GameType.Exe : entry.Type;
+            if (string.Equals(type, GameType.Web, System.StringComparison.OrdinalIgnoreCase))
+            {
+                into.Add(Web);
+                return;
+            }
+            if (string.Equals(type, GameType.Vr, System.StringComparison.OrdinalIgnoreCase))
+            {
+                into.Add(Vr);
+                return;
+            }
+            if (string.Equals(type, GameType.External, System.StringComparison.OrdinalIgnoreCase))
+            {
+                // Phone games say nothing about their OS without an explicit list.
+                return;
+            }
+
+            bool hasBuilds = entry.Builds != null && entry.Builds.Count > 0;
+            if (!hasBuilds)
+            {
+                // Legacy entries with only a flat executableName are Windows builds.
+                into.Add(Windows);
+                return;
+            }
+            foreach (string buildKey in entry.Builds.Keys)
+            {
+                into.Add(buildKey);
+            }
+        }
+    }
+
     public class GameBuild
     {
         [JsonProperty("executableName")] public string ExecutableName { get; set; }
@@ -72,6 +148,9 @@ namespace ArcadeLauncher.Core
         [JsonProperty("builds")] public Dictionary<string, GameBuild> Builds { get; set; } = new();
         [JsonProperty("type")] public string Type { get; set; } = GameType.Exe;
         [JsonProperty("playUrl")] public string PlayUrl { get; set; }
+        // Optional. Display-platform keys (see DisplayPlatform) for the list-row badges. Leave it out
+        // and the launcher derives the badges from "builds" and "type"; set it for phone games.
+        [JsonProperty("platforms")] public List<string> Platforms { get; set; }
         [JsonIgnore] public GameSourceType Source { get; set; }
     }
 }
