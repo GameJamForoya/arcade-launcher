@@ -29,12 +29,13 @@ namespace ArcadeLauncher.UI
         [SerializeField] ControlIconSet controlIcons;
         [SerializeField] float controlIconSize = 48f;
         [SerializeField] float controlIconSpacing = 12f;
-        [Tooltip("Inset of the badge strip from the picture's bottom-right corner.")]
-        [SerializeField] Vector2 controlIconInset = new(12f, 8f);
+        [Tooltip("The badge strip hangs below the picture, right-aligned: x = inset from the picture's right edge, y = gap below it.")]
+        [SerializeField] Vector2 controlIconInset = new(0f, 8f);
         [Tooltip("Padding between the badges and the edge of their backing box.")]
-        [SerializeField] float controlIconPadding = 6f;
+        [SerializeField] float controlIconPadding = 0f;
         [SerializeField] Color controlIconTint = new(0.85f, 0.85f, 0.85f, 1f);
-        [SerializeField] Color controlIconBackdrop = new(0f, 0f, 0f, 0.6f);
+        [Tooltip("Backing box behind the badges. Transparent by default now that they sit on the panel, not on art.")]
+        [SerializeField] Color controlIconBackdrop = new(0f, 0f, 0f, 0f);
 
         [Header("Counters")]
         [Tooltip("Inset of the \"2/4\" image counter from the picture's top-right corner, in canvas pixels.")]
@@ -45,11 +46,10 @@ namespace ArcadeLauncher.UI
         [SerializeField] float counterFontScale = 0.8f;
 
         [Header("Key hints")]
-        [Tooltip("Inset of the \"Q/E  Screenshots\" hint from the picture's top-left corner.")]
-        [SerializeField] Vector2 imageHintInset = new(12f, 8f);
+        [Tooltip("Gap between the picture's side edges and the \"◄ Q\" / \"E ►\" arrows that flank it.")]
+        [SerializeField] float imageArrowGap = 16f;
         [Tooltip("Offset of the \"N  Next page\" hint, which hangs below the description's bottom-left corner.")]
         [SerializeField] Vector2 pageHintInset = new(0f, 12f);
-        [SerializeField] string imageHintAction = "Next Image";
         [SerializeField] string pageHintAction = "Read More";
         [Tooltip("Colour for hints and counters, dimmer than the description so they read as chrome, not content.")]
         [SerializeField] Color hintColor = new(0.64f, 0.64f, 0.64f, 1f);
@@ -67,8 +67,12 @@ namespace ArcadeLauncher.UI
 
         const string ImageCounterObjectName = "ImageCounter";
         const string PageCounterObjectName = "PageCounter";
-        const string ImageHintObjectName = "ImageHint";
+        const string PreviousImageHintObjectName = "PreviousImageHint";
+        const string NextImageHintObjectName = "NextImageHint";
         const string PageHintObjectName = "PageHint";
+        // Same glyph family as the list cursor (►), so the font is known to carry them.
+        const string PreviousArrowGlyph = "◄ ";
+        const string NextArrowGlyph = " ►";
         const string ControlBadgesObjectName = "ControlBadges";
 
         // Control-scheme group names from the input asset, used to pick which binding's display
@@ -76,7 +80,6 @@ namespace ArcadeLauncher.UI
         const string KeyboardSchemeGroup = "Keyboard&Mouse";
         const string GamepadSchemeGroup = "Gamepad";
         const string HintKeyActionSeparator = ": ";
-        const string HintKeyPairSeparator = "/";
         const int FirstPage = 1;
 
         IDownloadManager _downloadManager;
@@ -89,7 +92,8 @@ namespace ArcadeLauncher.UI
         string _requestedImageUrl;
         TextMeshProUGUI _imageCounter;
         TextMeshProUGUI _pageCounter;
-        TextMeshProUGUI _imageHint;
+        TextMeshProUGUI _previousImageHint;
+        TextMeshProUGUI _nextImageHint;
         TextMeshProUGUI _pageHint;
         bool _hintsShowGamepad;
         RectTransform _controlBadges;
@@ -323,12 +327,20 @@ namespace ArcadeLauncher.UI
                     _imageCounter.text = $"{_imageIndex + 1}/{_imageUrls.Count}";
                 }
             }
-            if (_imageHint != null)
+            if (_previousImageHint != null)
             {
-                _imageHint.gameObject.SetActive(hasSeveralImages);
+                _previousImageHint.gameObject.SetActive(hasSeveralImages);
                 if (hasSeveralImages)
                 {
-                    _imageHint.text = BuildPairHint(_previousImageAction, _nextImageAction, imageHintAction);
+                    _previousImageHint.text = PreviousArrowGlyph + BindingLabel(_previousImageAction);
+                }
+            }
+            if (_nextImageHint != null)
+            {
+                _nextImageHint.gameObject.SetActive(hasSeveralImages);
+                if (hasSeveralImages)
+                {
+                    _nextImageHint.text = BindingLabel(_nextImageAction) + NextArrowGlyph;
                 }
             }
         }
@@ -384,14 +396,8 @@ namespace ArcadeLauncher.UI
 
         // ---- Key hints -----------------------------------------------------------------------
 
-        // "Q/E  Screenshots" on keyboard, "LB/RB  Screenshots" on a pad. Labels come from the
-        // bindings themselves, so a rebind in the input asset changes the hint for free.
-        string BuildPairHint(InputAction previous, InputAction next, string actionLabel)
-        {
-            string keys = BindingLabel(previous) + HintKeyPairSeparator + BindingLabel(next);
-            return keys + HintKeyActionSeparator + actionLabel;
-        }
-
+        // "N: Read More" on keyboard, "Y: Read More" on a pad. Labels come from the bindings
+        // themselves, so a rebind in the input asset changes the hint for free.
         string BuildSingleHint(InputAction action, string actionLabel)
         {
             return BindingLabel(action) + HintKeyActionSeparator + actionLabel;
@@ -433,13 +439,18 @@ namespace ArcadeLauncher.UI
 
             if (coverImage != null)
             {
-                // Picture overlays sit inside the picture's corners (pivot = anchor).
+                // The counter is the one overlay left on the art; it is small and Hanna was fine
+                // with it. The Q/E arrows sit in the gutters either side of the picture, where
+                // a bright screenshot cannot wash them out.
                 _imageCounter = CreateCounter(ImageCounterObjectName, coverImage.rectTransform,
                     anchor: new Vector2(1f, 1f), pivot: new Vector2(1f, 1f),
                     offset: new Vector2(-imageCounterInset.x, -imageCounterInset.y), TextAlignmentOptions.TopRight);
-                _imageHint = CreateCounter(ImageHintObjectName, coverImage.rectTransform,
-                    anchor: new Vector2(0f, 1f), pivot: new Vector2(0f, 1f),
-                    offset: new Vector2(imageHintInset.x, -imageHintInset.y), TextAlignmentOptions.TopLeft);
+                _previousImageHint = CreateCounter(PreviousImageHintObjectName, coverImage.rectTransform,
+                    anchor: new Vector2(0f, 0.5f), pivot: new Vector2(1f, 0.5f),
+                    offset: new Vector2(-imageArrowGap, 0f), TextAlignmentOptions.MidlineRight);
+                _nextImageHint = CreateCounter(NextImageHintObjectName, coverImage.rectTransform,
+                    anchor: new Vector2(1f, 0.5f), pivot: new Vector2(0f, 0.5f),
+                    offset: new Vector2(imageArrowGap, 0f), TextAlignmentOptions.MidlineLeft);
             }
             // Description labels hang below the box (pivot on their top edge): a full page of text
             // reaches the bottom of the rect, so anything inside it would collide with the last line.
@@ -487,12 +498,12 @@ namespace ArcadeLauncher.UI
                 typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
             _controlBadges = stripObject.GetComponent<RectTransform>();
             _controlBadges.SetParent(coverImage.rectTransform, worldPositionStays: false);
+            // Hangs below the picture's bottom-right corner (pivot on its top edge), off the art.
             _controlBadges.anchorMin = new Vector2(1f, 0f);
             _controlBadges.anchorMax = new Vector2(1f, 0f);
-            _controlBadges.pivot = new Vector2(1f, 0f);
-            _controlBadges.anchoredPosition = new Vector2(-controlIconInset.x, controlIconInset.y);
+            _controlBadges.pivot = new Vector2(1f, 1f);
+            _controlBadges.anchoredPosition = new Vector2(-controlIconInset.x, -controlIconInset.y);
 
-            // A dark backdrop keeps the badges legible over bright screenshots (the mockup's grey box).
             var backdrop = stripObject.GetComponent<Image>();
             backdrop.color = controlIconBackdrop;
             backdrop.raycastTarget = false;
