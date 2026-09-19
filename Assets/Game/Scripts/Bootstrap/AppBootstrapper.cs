@@ -21,11 +21,11 @@ namespace ArcadeLauncher.Core
         {
             ServiceLocator.Clear();
 
-            // Game source. DriveCatalogGameSource degrades gracefully: no DriveCatalogConfig asset
+            // Game source. RemoteCatalogGameSource degrades gracefully: no RemoteCatalogConfig asset
             // (or no network) means it falls through to the disk cache, then the baked games.json.
             IGameSource gameSource = useMockData
                 ? new MockGameSource()
-                : new DriveCatalogGameSource();
+                : new RemoteCatalogGameSource();
             ServiceLocator.Register(gameSource);
 
             // Game launcher (Windows-only for now; CanLaunch gates per-entry)

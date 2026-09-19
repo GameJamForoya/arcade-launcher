@@ -1,0 +1,178 @@
+{
+  "games": [
+    {
+      "id": "ball-stacks",
+      "title": "Ball Stacks",
+      "developer": "Caterpillar Gang",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "Stack high, wobble hard, sabotage!\n\nYour tower of balls is wobbling. So is theirs. Only one of you gets to be the tallest.\n\nBall Stacks is a local-multiplayer physics party game for 2–4 players, made in 48 hours for a game jam themed \"Height\" — so naturally, the whole game is about desperately clinging to yours.\n\nRoll into balls and stack them into a tower — full physics simulation, so the taller it gets, the harder it wobbles. Bump into rival towers to send them tumbling; a collapsed stack rebuilds from scratch. Tallest tower when the timer runs out wins.\n\nControls: two players share one gamepad — left player on the left stick, d-pad and shoulder buttons, right player on the right stick and face buttons. Xbox and PlayStation controllers supported. At least one controller required.",
+      "coverArtUrl": "https://img.itch.zone/aW1nLzI5OTY0MTM4LnBuZw==/original/7awu7x.png",
+      "screenshotUrls": [
+        "https://img.itch.zone/aW1hZ2UvNTAwNTEyNi8yOTk2NzA2OC5qcGc=/original/aRvbRb.jpg"
+      ],
+      "downloadUrl": "",
+      "pageUrl": "https://suuunly.itch.io/ball-stacks",
+      "executableName": "",
+      "type": "exe",
+      "playUrl": "",
+      "builds": {
+        "windows": {
+          "executableName": "",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1xHHMwTWlXlYhamSTWSieaDNwCkUiu023&export=download&confirm=t"
+        },
+        "macos": {
+          "executableName": "Ball Stacks.app",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1x8EARv2PfRfYFE_KIe0ai-uYvZ48FbF2&export=download&confirm=t"
+        }
+      }
+    },
+    {
+      "id": "air-draft",
+      "title": "Air Draft",
+      "developer": "blizzmaster & Torchkill",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "A game about climbing as high as you can, use the wind to your advantage. Play solo for a high score or against opponents for glory up to four players.\n\nKeyboard Controls:\nMovement: P1: WASD (W is for jumping and double jumping) P2: Arrow keys.\nAbilities: P1: Q, E, SHIFT / P2: K, P, ALT\n\nController controls:\nMovement: Analog stick, arrow keys and cross for jump (X)\nAbilities: Square, Triangle and Circle",
+      "coverArtUrl": "https://img.itch.zone/aW1nLzI5OTQ1MzQ4LnBuZw==/original/E6qdo2.png",
+      "screenshotUrls": [
+        "https://img.itch.zone/aW1hZ2UvNTAwMTk0My8yOTk2MTAzOC5wbmc=/original/Kde%2FPr.png",
+        "https://img.itch.zone/aW1hZ2UvNTAwMTk0My8yOTk2MTAzNy5wbmc=/original/XaBLug.png",
+        "https://img.itch.zone/aW1hZ2UvNTAwMTk0My8yOTk2MTA0MS5wbmc=/original/AWPESQ.png"
+      ],
+      "downloadUrl": "",
+      "pageUrl": "https://blizzmaster.itch.io/airdraft",
+      "executableName": "Air Draft.exe",
+      "type": "exe",
+      "playUrl": "",
+      "builds": {
+        "windows": {
+          "executableName": "Air Draft.exe",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1xW_HydR9EKjm8onDLeDOiyDaSjbv_7R5&export=download&confirm=t"
+        },
+        "linux": {
+          "executableName": "Air Draft.x86_64",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1vwKDZzVQexi0Mno2N5S2GEnpLDuSFQk6&export=download&confirm=t"
+        }
+      }
+    },
+    {
+      "id": "the-leap",
+      "title": "The Leap",
+      "developer": "brynleif",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "Faroe Islands 1005 AD. It is a time of unrest and the islands are close to civil war. The chieftain Sigmundur Brestisson is suddenly attacked in his home and must escape. Can you help him get over the many chasms of his home island?",
+      "coverArtUrl": "https://img.itch.zone/aW1hZ2UvNTAwNTIxNS8yOTk2NDQ5NS5wbmc=/original/PKCNNl.png",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://brynleif.itch.io/the-leap",
+      "executableName": "",
+      "type": "exe",
+      "playUrl": "",
+      "builds": {
+        "windows": {
+          "executableName": "",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1sZuEeP8uZriDMexTZg73nLM_7X_ErT-b&export=download&confirm=t"
+        },
+        "linux": {
+          "executableName": "",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1SL7P6Fjkt4nV362CWe4CKVRP4Kj1la1u&export=download&confirm=t"
+        }
+      }
+    },
+    {
+      "id": "pogo-brawl",
+      "title": "Pogo Brawl",
+      "developer": "Petur Wentzlau",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "Jump around and bonk each other in the head in this competitive up to 4 player party game. Goal: Jump on each others heads until you win!\n\nLocal multiplayer, up to 4 players — keyboard or any gamepad.",
+      "coverArtUrl": "https://img.itch.zone/aW1hZ2UvNTAwNDU2OC8yOTk2MTEyMS5wbmc=/original/zB+GbM.png",
+      "screenshotUrls": [
+        "https://img.itch.zone/aW1hZ2UvNTAwNDU2OC8yOTk2MTEyMi5wbmc=/original/VArgpG.png",
+        "https://img.itch.zone/aW1hZ2UvNTAwNDU2OC8yOTk2MTEyMC5wbmc=/original/WOf4QJ.png"
+      ],
+      "downloadUrl": "",
+      "pageUrl": "https://lindev.itch.io/pogo-brawl",
+      "executableName": "",
+      "type": "exe",
+      "playUrl": "",
+      "builds": {
+        "windows": {
+          "executableName": "",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=13fjVCbdXVIFAIfUbkqYpgGyeuRd4fBd1&export=download&confirm=t"
+        },
+        "linux": {
+          "executableName": "",
+          "downloadUrl": "https://drive.usercontent.google.com/download?id=1ZtfI_GBf9W2Hz-mp9zaXuD6msk5Wpg9J&export=download&confirm=t"
+        }
+      }
+    },
+    {
+      "id": "apogee",
+      "title": "Apogee",
+      "developer": "MichaelGYP",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "An incremental game about launching a pendulum higher and higher.\n\nBoost possible keys: [ W ] or [ A ] or [ S ] or [ D ]\n\nThe game hasn't been tested to the maximum. Possible outcomes when upgrades become too high is still undetermined.",
+      "coverArtUrl": "https://img.itch.zone/aW1hZ2UvNTAwNTUxOS8yOTk2NjQyNi5wbmc=/original/uouPYV.png",
+      "screenshotUrls": [
+        "https://img.itch.zone/aW1hZ2UvNTAwNTUxOS8yOTk2NjM5Mi5wbmc=/original/1zk8D1.png",
+        "https://img.itch.zone/aW1hZ2UvNTAwNTUxOS8yOTk2NjM5My5wbmc=/original/p5cZri.png"
+      ],
+      "downloadUrl": "",
+      "pageUrl": "https://michaelgyp.itch.io/apogee",
+      "executableName": "",
+      "type": "web",
+      "playUrl": "https://html-classic.itch.zone/html/19224307/index.html?v=1789317188"
+    },
+    {
+      "id": "galdrava",
+      "title": "Galdrava",
+      "developer": "Ragnar Kruse",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "Long ago, mountain singers tried to lift their homeland above a gathering darkness; their unfinished chant tore its highest ridges into the sky. Now wild magic stirs among coastal pines, frozen passes, and floating stone, drawing strange creatures to the rising trail. You are a wandering spellcaster following that ancient song upward, through a mountain that has never stopped rising.\n\n(Prototype build from the jam.)",
+      "coverArtUrl": "https://img.itch.zone/aW1nLzI5OTY2ODI4LnBuZw==/original/Lwm72n.png",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://kruseio.itch.io/galdrava",
+      "executableName": "",
+      "type": "web",
+      "playUrl": "https://html-classic.itch.zone/html/19223704/gamejam-2026-gh-pages/index.html?v=1789314697"
+    },
+    {
+      "id": "upp-a-plass",
+      "title": "UPP á pláss",
+      "developer": "WizCat",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "UPP á pláss — an HTML5 game made with Unity for GameJam Føroya 2026.",
+      "coverArtUrl": "https://img.itch.zone/aW1nLzI5OTY1OTQ3LnBuZw==/original/zUUqb9.png",
+      "screenshotUrls": [],
+      "downloadUrl": "",
+      "pageUrl": "https://wizcatstudio.itch.io/upp-plss",
+      "executableName": "",
+      "type": "web",
+      "playUrl": "https://html-classic.itch.zone/html/19224384/TestBuild017/index.html?v=1789317417"
+    },
+    {
+      "id": "ascentvr",
+      "title": "AscentVR",
+      "developer": "Kristjan G.",
+      "jamYear": 2026,
+      "jamName": "GameJam Føroyar",
+      "description": "Use your hands to press elevator buttons to ascend the tower. Timer starts when you ascend to the first floor from the main menu room.\n\nVR only — Meta Quest 2 (or compatible standalone headset) with hand tracking, and a roomscale play space of at least 2x3 m. Scan the QR to grab the APK from the game's page.",
+      "coverArtUrl": "https://img.itch.zone/aW1hZ2UvNTAwNTIyMC8yOTk2NjMwNy5qcGc=/original/8bM7X3.jpg",
+      "screenshotUrls": [
+        "https://img.itch.zone/aW1hZ2UvNTAwNTIyMC8yOTk2NjMwOC5qcGc=/original/TaapCX.jpg"
+      ],
+      "downloadUrl": "",
+      "pageUrl": "https://kristjang.itch.io/ascentvr",
+      "executableName": "",
+      "type": "external",
+      "playUrl": "https://kristjang.itch.io/ascentvr"
+    }
+  ]
+}

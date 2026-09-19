@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -12,21 +12,20 @@ using UnityEngine.Networking;
 namespace ArcadeLauncher.Sources
 {
     /// <summary>
-    /// Catalog source for the cabinet: fetches games.json from a Drive-hosted file at boot, caches
+    /// Catalog source for the cabinet: fetches games.json from a hosted URL (e.g. GitHub Pages) at boot, caches
     /// the raw JSON to disk so the cabinet still lists games while offline, and degrades to the
     /// baked Resources copy as a last resort.
     ///
     /// Fallback chain (each step logs one line):
-    /// Drive fetch → %AppData%/GameJamForoyar/catalog-cache.json → baked Resources games.json.
+    /// Catalog fetch → %AppData%/GameJamForoyar/catalog-cache.json → baked Resources games.json.
     /// <see cref="GetGamesAsync"/> never throws; the worst case is an empty list.
     /// </summary>
-    public class DriveCatalogGameSource : IGameSource
+    public class RemoteCatalogGameSource : IGameSource
     {
-        const string LogPrefix = "[DriveCatalog]";
-        // Drive's keyless direct-download endpoint for public ("anyone with link") files. Unlike the
-        // Drive API's alt=media route this needs no API key, and unlike drive.google.com/uc it never
-        // serves the virus-scan interstitial page (verified against real builds, 2026-09-18).
-        const string CatalogUrlFormat = "https://drive.usercontent.google.com/download?id={0}&export=download&confirm=t";
+        const string LogPrefix = "[RemoteCatalog]";
+        // Appended to the configured URL with a unix-time value so CDN caches (GitHub Pages serves
+        // with ~10 min max-age) can never hand the cabinet a stale catalog on boot.
+        const string CacheBustParameterName = "cb";
         const int RequestTimeoutSeconds = 10;
         const string AppDataFolderName = "GameJamForoyar";
         const string CacheFileName = "catalog-cache.json";
@@ -35,7 +34,7 @@ namespace ArcadeLauncher.Sources
 
         readonly LocalCacheGameSource _bakedCatalogSource = new();
 
-        public string SourceName => "DriveCatalog";
+        public string SourceName => "RemoteCatalog";
 
         public async Task<IReadOnlyList<GameEntry>> GetGamesAsync(CancellationToken ct = default)
         {
@@ -54,10 +53,10 @@ namespace ArcadeLauncher.Sources
 
         async Task<IReadOnlyList<GameEntry>> LoadCatalogAsync(CancellationToken ct)
         {
-            var config = Resources.Load<DriveCatalogConfig>(DriveCatalogConfig.ResourcesPath);
+            var config = Resources.Load<RemoteCatalogConfig>(RemoteCatalogConfig.ResourcesPath);
             if (config == null || !config.IsConfigured)
             {
-                Debug.Log($"{LogPrefix} No Drive catalog configured — using cached/baked catalog");
+                Debug.Log($"{LogPrefix} No remote catalog configured — using cached/baked catalog");
                 return await LoadFallbackCatalogAsync(ct);
             }
 
@@ -70,11 +69,11 @@ namespace ArcadeLauncher.Sources
             List<GameEntry> remoteGames = TryParseCatalog(remoteJson);
             if (remoteGames == null)
             {
-                Debug.LogWarning($"{LogPrefix} Drive catalog response was not valid catalog JSON — using cached/baked catalog");
+                Debug.LogWarning($"{LogPrefix} Catalog response was not valid catalog JSON — using cached/baked catalog");
                 return await LoadFallbackCatalogAsync(ct);
             }
 
-            Debug.Log($"{LogPrefix} Loaded {remoteGames.Count} games from Drive catalog");
+            Debug.Log($"{LogPrefix} Loaded {remoteGames.Count} games from remote catalog");
             WriteCacheFile(remoteJson);
             return TagEntries(remoteGames);
         }
@@ -103,15 +102,17 @@ namespace ArcadeLauncher.Sources
             }
         }
 
-        static async Task<string> TryFetchRemoteCatalogAsync(DriveCatalogConfig config, CancellationToken ct)
+        static async Task<string> TryFetchRemoteCatalogAsync(RemoteCatalogConfig config, CancellationToken ct)
         {
             if (ct.IsCancellationRequested)
             {
-                Debug.Log($"{LogPrefix} Drive fetch skipped — cancelled before start");
+                Debug.Log($"{LogPrefix} Catalog fetch skipped — cancelled before start");
                 return null;
             }
 
-            string requestUrl = string.Format(CatalogUrlFormat, config.CatalogFileId);
+            string cacheBustSeparator = config.CatalogUrl.Contains("?") ? "&" : "?";
+            string requestUrl =
+                $"{config.CatalogUrl}{cacheBustSeparator}{CacheBustParameterName}={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
             using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
             {
                 request.timeout = RequestTimeoutSeconds;
@@ -122,13 +123,13 @@ namespace ArcadeLauncher.Sources
                 }
                 catch (InvalidOperationException e)
                 {
-                    Debug.LogWarning($"{LogPrefix} Drive request could not be sent ({e.Message})");
+                    Debug.LogWarning($"{LogPrefix} Catalog request could not be sent ({e.Message})");
                     return null;
                 }
 
                 if (request.result != UnityWebRequest.Result.Success || request.responseCode != HttpStatusOk)
                 {
-                    Debug.LogWarning($"{LogPrefix} Drive fetch failed (HTTP {request.responseCode}, {request.result}: {request.error})");
+                    Debug.LogWarning($"{LogPrefix} Catalog fetch failed (HTTP {request.responseCode}, {request.result}: {request.error})");
                     return null;
                 }
 
