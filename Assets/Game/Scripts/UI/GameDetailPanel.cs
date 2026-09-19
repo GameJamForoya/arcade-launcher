@@ -54,6 +54,19 @@ namespace ArcadeLauncher.UI
         [Tooltip("Colour for hints and counters, dimmer than the description so they read as chrome, not content.")]
         [SerializeField] Color hintColor = new(0.64f, 0.64f, 0.64f, 1f);
 
+        [Header("Key hint bar (bottom-left)")]
+        [SerializeField] string visitPageHintAction = "Visit Page";
+        [SerializeField] string uninstallHintAction = "Uninstall";
+        [SerializeField] float hintBarSpacing = 40f;
+        [Tooltip("How long the uninstall key must be held before the install is deleted.")]
+        [SerializeField] float uninstallHoldSeconds = 1f;
+        [Tooltip("How much faster the fill bar drains than it fills after an early release.")]
+        [SerializeField] float uninstallDrainMultiplier = 3f;
+        [SerializeField] float uninstallBarHeight = 4f;
+        [Tooltip("Gap between the bottom of the Uninstall hint text and its fill bar.")]
+        [SerializeField] float uninstallBarGap = 4f;
+        [SerializeField] Color uninstallBarTrackColor = new(1f, 1f, 1f, 0.15f);
+
         // How often the shown percent is refreshed while the current entry is Downloading.
         // GetProgress is cheap, but there is no need to touch the TMP text every frame.
         const float DownloadProgressRefreshIntervalSeconds = 0.2f;
@@ -64,6 +77,8 @@ namespace ArcadeLauncher.UI
         const string PreviousImageActionName = "PreviousImage";
         const string NextImageActionName = "NextImage";
         const string NextPageActionName = "NextPage";
+        const string VisitPageActionName = "VisitPage";
+        const string UninstallActionName = "Uninstall";
 
         const string ImageCounterObjectName = "ImageCounter";
         const string PageCounterObjectName = "PageCounter";
@@ -71,6 +86,11 @@ namespace ArcadeLauncher.UI
         const string NextImageHintObjectName = "NextImageHint";
         const string PageHintObjectName = "PageHint";
         const string ControlBadgesObjectName = "ControlBadges";
+        const string HintBarObjectName = "HintBar";
+        const string VisitPageHintObjectName = "VisitPageHint";
+        const string UninstallHintObjectName = "UninstallHint";
+        const string UninstallBarTrackObjectName = "UninstallBarTrack";
+        const string UninstallBarFillObjectName = "UninstallBarFill";
 
         // Control-scheme group names from the input asset, used to pick which binding's display
         // string a hint shows ("Q/E" on keyboard, "LB/RB" on a pad).
@@ -101,12 +121,25 @@ namespace ArcadeLauncher.UI
         InputAction _previousImageAction;
         InputAction _nextImageAction;
         InputAction _nextPageAction;
+        InputAction _visitPageAction;
+        InputAction _uninstallAction;
+
+        RectTransform _hintBar;
+        TextMeshProUGUI _visitPageHint;
+        TextMeshProUGUI _uninstallHint;
+        RectTransform _uninstallBarTrack;
+        RectTransform _uninstallBarFill;
+        // 0..1 fill of the hold bar. Fills while the key is held, drains faster on release, and
+        // fires once when full; the key must be released before it can fire again.
+        float _uninstallHoldProgress;
+        bool _uninstallFiredThisPress;
 
         void Awake()
         {
             ServiceLocator.TryGet(out _downloadManager);
             CreateCounters();
             CreateControlBadgeStrip();
+            CreateHintBar();
         }
 
         void Start()
@@ -115,12 +148,14 @@ namespace ArcadeLauncher.UI
             if (_previousImageAction != null) _previousImageAction.performed += OnPreviousImagePerformed;
             if (_nextImageAction != null) _nextImageAction.performed += OnNextImagePerformed;
             if (_nextPageAction != null) _nextPageAction.performed += OnNextPagePerformed;
+            if (_visitPageAction != null) _visitPageAction.performed += OnVisitPagePerformed;
 
             InputSystem.onActionChange += OnAnyActionChange;
 
             // Hints read their labels from the actions, which only exist from here on.
             UpdateImageCounter();
             UpdatePageCounter();
+            UpdateHintBar();
         }
 
         void OnEnable()
@@ -139,10 +174,13 @@ namespace ArcadeLauncher.UI
             if (_previousImageAction != null) _previousImageAction.performed -= OnPreviousImagePerformed;
             if (_nextImageAction != null) _nextImageAction.performed -= OnNextImagePerformed;
             if (_nextPageAction != null) _nextPageAction.performed -= OnNextPagePerformed;
+            if (_visitPageAction != null) _visitPageAction.performed -= OnVisitPagePerformed;
         }
 
         void Update()
         {
+            TickUninstallHold();
+
             if (_downloadManager == null || _shownEntry == null) return;
             if (_downloadManager.GetState(_shownEntry.Id) != GameInstallState.Downloading) return;
 
@@ -176,9 +214,11 @@ namespace ArcadeLauncher.UI
                 ClearImages();
                 UpdatePageCounter();
                 ShowControlBadges(null);
+                UpdateHintBar();
                 return;
             }
             ShowControlBadges(entry);
+            UpdateHintBar();
 
             if (titleText != null) titleText.text = entry.Title;
             if (developerText != null) developerText.text = string.IsNullOrEmpty(entry.Developer) ? "" : entry.Developer;
@@ -444,6 +484,7 @@ namespace ArcadeLauncher.UI
             _hintsShowGamepad = performedOnGamepad;
             UpdateImageCounter();
             UpdatePageCounter();
+            UpdateHintBar();
         }
 
         // ---- Counters (built in code so the scene stays as authored) -------------------------
@@ -586,6 +627,182 @@ namespace ArcadeLauncher.UI
             image.raycastTarget = false;
         }
 
+        // ---- Key hint bar: "V: Visit Page"  "U: Uninstall" (hold) ---------------------------
+
+        // Lives inside the play prompt's band so it lines up with DOWNLOAD / PLAY on the right.
+        void CreateHintBar()
+        {
+            if (playPrompt == null || descriptionText == null) return;
+
+            var barObject = new GameObject(HintBarObjectName, typeof(RectTransform), typeof(HorizontalLayoutGroup),
+                typeof(ContentSizeFitter));
+            _hintBar = barObject.GetComponent<RectTransform>();
+            _hintBar.SetParent(playPrompt.rectTransform, worldPositionStays: false);
+            _hintBar.anchorMin = new Vector2(0f, 0.5f);
+            _hintBar.anchorMax = new Vector2(0f, 0.5f);
+            _hintBar.pivot = new Vector2(0f, 0.5f);
+            _hintBar.anchoredPosition = Vector2.zero;
+
+            var layout = barObject.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = hintBarSpacing;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            var fitter = barObject.GetComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            _visitPageHint = CreateCounter(VisitPageHintObjectName, _hintBar,
+                anchor: new Vector2(0f, 0.5f), pivot: new Vector2(0f, 0.5f), offset: Vector2.zero,
+                TextAlignmentOptions.MidlineLeft);
+            _uninstallHint = CreateCounter(UninstallHintObjectName, _hintBar,
+                anchor: new Vector2(0f, 0.5f), pivot: new Vector2(0f, 0.5f), offset: Vector2.zero,
+                TextAlignmentOptions.MidlineLeft);
+            CreateUninstallBar();
+            barObject.SetActive(false);
+        }
+
+        // A thin track under the Uninstall text with a fill that grows while the key is held.
+        void CreateUninstallBar()
+        {
+            var trackObject = new GameObject(UninstallBarTrackObjectName, typeof(RectTransform), typeof(Image));
+            _uninstallBarTrack = trackObject.GetComponent<RectTransform>();
+            _uninstallBarTrack.SetParent(_uninstallHint.rectTransform, worldPositionStays: false);
+            _uninstallBarTrack.anchorMin = new Vector2(0f, 0f);
+            _uninstallBarTrack.anchorMax = new Vector2(1f, 0f);
+            _uninstallBarTrack.pivot = new Vector2(0.5f, 1f);
+            _uninstallBarTrack.anchoredPosition = new Vector2(0f, -uninstallBarGap);
+            _uninstallBarTrack.sizeDelta = new Vector2(0f, uninstallBarHeight);
+            var trackImage = trackObject.GetComponent<Image>();
+            trackImage.color = uninstallBarTrackColor;
+            trackImage.raycastTarget = false;
+
+            var fillObject = new GameObject(UninstallBarFillObjectName, typeof(RectTransform), typeof(Image));
+            _uninstallBarFill = fillObject.GetComponent<RectTransform>();
+            _uninstallBarFill.SetParent(_uninstallBarTrack, worldPositionStays: false);
+            _uninstallBarFill.anchorMin = new Vector2(0f, 0f);
+            _uninstallBarFill.anchorMax = new Vector2(0f, 1f);
+            _uninstallBarFill.pivot = new Vector2(0f, 0.5f);
+            _uninstallBarFill.anchoredPosition = Vector2.zero;
+            _uninstallBarFill.sizeDelta = Vector2.zero;
+            var fillImage = fillObject.GetComponent<Image>();
+            fillImage.color = hintColor;
+            fillImage.raycastTarget = false;
+        }
+
+        void UpdateHintBar()
+        {
+            if (_hintBar == null) return;
+
+            bool showVisitPage = _shownEntry != null && CanVisitPage(_shownEntry);
+            bool showUninstall = _shownEntry != null && IsUninstallable(_shownEntry);
+
+            _visitPageHint.gameObject.SetActive(showVisitPage);
+            if (showVisitPage)
+            {
+                _visitPageHint.text = BuildSingleHint(_visitPageAction, visitPageHintAction);
+            }
+
+            _uninstallHint.gameObject.SetActive(showUninstall);
+            if (showUninstall)
+            {
+                _uninstallHint.text = BuildSingleHint(_uninstallAction, uninstallHintAction);
+            }
+            else
+            {
+                ResetUninstallHold();
+            }
+
+            _hintBar.gameObject.SetActive(showVisitPage || showUninstall);
+        }
+
+        // Hidden when Enter already opens the same page (external / vr entries whose pageUrl is
+        // their playUrl), otherwise pressing V would do exactly what Enter does.
+        static bool CanVisitPage(GameEntry entry)
+        {
+            if (string.IsNullOrEmpty(entry.PageUrl)) return false;
+            bool enterOpensPlayUrl = GameTypeRules.OpensPlayUrlInBrowser(entry.Type);
+            bool samePage = string.Equals(entry.PageUrl, entry.PlayUrl, System.StringComparison.OrdinalIgnoreCase);
+            return !(enterOpensPlayUrl && samePage);
+        }
+
+        bool IsUninstallable(GameEntry entry)
+        {
+            if (_downloadManager == null) return false;
+            bool isExeType = string.IsNullOrEmpty(entry.Type)
+                || string.Equals(entry.Type, GameType.Exe, System.StringComparison.OrdinalIgnoreCase);
+            return isExeType && _downloadManager.GetState(entry.Id) == GameInstallState.Installed;
+        }
+
+        void OnVisitPagePerformed(InputAction.CallbackContext context)
+        {
+            bool canVisit = isActiveAndEnabled && _visitPageHint != null && _visitPageHint.gameObject.activeSelf;
+            if (!canVisit) return;
+
+            Debug.Log($"[GameDetailPanel] {_shownEntry.Title}: opening page {_shownEntry.PageUrl}");
+            Application.OpenURL(_shownEntry.PageUrl);
+        }
+
+        void TickUninstallHold()
+        {
+            bool canHold = _uninstallAction != null && _uninstallHint != null && _uninstallHint.gameObject.activeInHierarchy;
+            if (!canHold) return;
+
+            bool isPressed = _uninstallAction.IsPressed();
+            if (!isPressed)
+            {
+                _uninstallFiredThisPress = false;
+            }
+
+            bool isFilling = isPressed && !_uninstallFiredThisPress;
+            float fillPerSecond = 1f / uninstallHoldSeconds;
+            if (isFilling)
+            {
+                _uninstallHoldProgress += Time.deltaTime * fillPerSecond;
+            }
+            else
+            {
+                _uninstallHoldProgress -= Time.deltaTime * fillPerSecond * uninstallDrainMultiplier;
+            }
+            _uninstallHoldProgress = Mathf.Clamp01(_uninstallHoldProgress);
+
+            bool holdComplete = isFilling && _uninstallHoldProgress >= 1f;
+            if (holdComplete)
+            {
+                _uninstallFiredThisPress = true;
+                _uninstallHoldProgress = 0f;
+                PerformUninstall();
+            }
+            UpdateUninstallBar();
+        }
+
+        void PerformUninstall()
+        {
+            if (_shownEntry == null || _downloadManager == null) return;
+
+            bool deleted = _downloadManager.DeleteInstall(_shownEntry.Id);
+            Debug.Log($"[GameDetailPanel] {_shownEntry.Title}: uninstall {(deleted ? "done" : "refused")}");
+            // StateChanged normally refreshes the prompt and hints; refresh here too in case the
+            // manager declined (e.g. that game is the active download) and no event fires.
+            RefreshExeStatusText();
+        }
+
+        void ResetUninstallHold()
+        {
+            _uninstallHoldProgress = 0f;
+            UpdateUninstallBar();
+        }
+
+        void UpdateUninstallBar()
+        {
+            if (_uninstallBarFill == null || _uninstallBarTrack == null) return;
+            float fillWidth = _uninstallBarTrack.rect.width * _uninstallHoldProgress;
+            _uninstallBarFill.sizeDelta = new Vector2(fillWidth, 0f);
+        }
+
         // ---- Input wiring --------------------------------------------------------------------
 
         void ResolveLauncherActions()
@@ -608,6 +825,8 @@ namespace ArcadeLauncher.UI
             _previousImageAction = launcherMap.FindAction(PreviousImageActionName);
             _nextImageAction = launcherMap.FindAction(NextImageActionName);
             _nextPageAction = launcherMap.FindAction(NextPageActionName);
+            _visitPageAction = launcherMap.FindAction(VisitPageActionName);
+            _uninstallAction = launcherMap.FindAction(UninstallActionName);
         }
 
         static InputActionAsset FindSceneActionsAsset()
@@ -640,6 +859,9 @@ namespace ArcadeLauncher.UI
         void RefreshExeStatusText()
         {
             if (_shownEntry == null || playPrompt == null) return;
+
+            // The Uninstall hint depends on the same install state as the prompt text.
+            UpdateHintBar();
 
             bool opensInBrowser = GameTypeRules.OpensPlayUrlInBrowser(_shownEntry.Type);
             bool isWeb = string.Equals(_shownEntry.Type, GameType.Web, System.StringComparison.OrdinalIgnoreCase);
