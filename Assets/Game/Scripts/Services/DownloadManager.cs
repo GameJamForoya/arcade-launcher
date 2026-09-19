@@ -182,6 +182,49 @@ namespace ArcadeLauncher.Services
             Debug.Log($"{LogPrefix} '{gameId}': removed from the download queue.");
         }
 
+        public bool TryGetInstalledExecutableName(string gameId, out string executableName)
+        {
+            executableName = null;
+            if (string.IsNullOrEmpty(gameId))
+            {
+                return false;
+            }
+
+            bool hasRecord = _manifest.Installs.TryGetValue(gameId, out LocalInstallRecord record);
+            bool hasRecordedName = hasRecord && record != null && !string.IsNullOrEmpty(record.ExecutableName);
+            if (!hasRecordedName)
+            {
+                return false;
+            }
+
+            executableName = record.ExecutableName;
+            return true;
+        }
+
+        public void RecordDiscoveredExecutableName(string gameId, string executableName)
+        {
+            if (string.IsNullOrEmpty(gameId) || string.IsNullOrEmpty(executableName))
+            {
+                return;
+            }
+
+            bool hasRecord = _manifest.Installs.TryGetValue(gameId, out LocalInstallRecord record);
+            if (!hasRecord || record == null)
+            {
+                return;
+            }
+
+            bool isUnchanged = string.Equals(record.ExecutableName, executableName, StringComparison.OrdinalIgnoreCase);
+            if (isUnchanged)
+            {
+                return;
+            }
+
+            Debug.Log($"{LogPrefix} '{gameId}': manifest executable updated from '{record.ExecutableName ?? "<none>"}' to '{executableName}'.");
+            record.ExecutableName = executableName;
+            LocalInstallManifestFile.Save(_manifest, _gamesRoot);
+        }
+
         public bool DeleteInstall(string gameId)
         {
             if (string.IsNullOrEmpty(gameId))

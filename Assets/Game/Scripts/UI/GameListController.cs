@@ -430,6 +430,7 @@ namespace ArcadeLauncher.UI
         static string ResolveExecutablePath(GameEntry entry)
         {
             string folder;
+            bool isManagedInstall = false;
             if (!string.IsNullOrEmpty(entry.LocalFolder))
             {
                 folder = entry.LocalFolder;
@@ -437,6 +438,7 @@ namespace ArcadeLauncher.UI
             else if (ServiceLocator.TryGet<GamesRootPath>(out var root))
             {
                 folder = Path.Combine(root.Path, entry.Id ?? "");
+                isManagedInstall = true;
             }
             else
             {
@@ -445,23 +447,47 @@ namespace ArcadeLauncher.UI
 
             GameBuild hostBuild = entry.Builds != null && entry.Builds.TryGetValue(HostPlatform.Key, out var build) ? build : null;
             bool hasHostBuildName = hostBuild != null && !string.IsNullOrEmpty(hostBuild.ExecutableName);
-            string preferredName = hasHostBuildName ? hostBuild.ExecutableName : entry.ExecutableName;
+            string catalogName = hasHostBuildName ? hostBuild.ExecutableName : entry.ExecutableName;
 
-            // The canonical name in games.json wins when the file is actually there. Otherwise, scan the
-            // folder for the real .exe (mirrors the install-time discovery the Download Manager will run)
-            // and cache the discovered name back onto whichever field supplied the preferred name, so
-            // subsequent launches skip the scan.
+            // Priority: the name install-time discovery recorded in games-local.json, then the
+            // catalog's per-platform build name, then the flat catalog name, then a folder scan.
+            // The manifest wins because it reflects what was actually on disk after extraction,
+            // so a wrong catalog name no longer forces a rescan on every launch.
+            IDownloadManager downloadManager = null;
+            string manifestName = null;
+            bool hasManifestName = isManagedInstall
+                && ServiceLocator.TryGet(out downloadManager)
+                && downloadManager.TryGetInstalledExecutableName(entry.Id, out manifestName);
+            string preferredName = hasManifestName ? manifestName : catalogName;
+
             string discovered = InstallScanner.FindExecutable(folder, preferredName, entry.Id, entry.Title);
-            if (string.IsNullOrEmpty(discovered)) {
+            if (string.IsNullOrEmpty(discovered))
+            {
                 return null;
             }
 
+            // Cache the discovered name back onto whichever field supplied the preferred name, so
+            // subsequent launches skip the scan: the manifest on disk for managed installs, and the
+            // in-memory catalog entry for the rest of this session either way.
             bool nameChanged = !string.Equals(discovered, preferredName, System.StringComparison.OrdinalIgnoreCase);
-            if (nameChanged) {
-                Debug.Log($"[GameListController] {entry.Title}: executable resolved to '{discovered}' (games.json said '{preferredName ?? "<none>"}')");
-                if (hasHostBuildName) {
+            if (nameChanged)
+            {
+                Debug.Log($"[GameListController] {entry.Title}: executable resolved to '{discovered}' ({(hasManifestName ? "manifest" : "games.json")} said '{preferredName ?? "<none>"}')");
+            }
+            if (hasManifestName && nameChanged)
+            {
+                downloadManager.RecordDiscoveredExecutableName(entry.Id, discovered);
+            }
+
+            bool catalogNameIsStale = !string.Equals(discovered, catalogName, System.StringComparison.OrdinalIgnoreCase);
+            if (catalogNameIsStale)
+            {
+                if (hasHostBuildName)
+                {
                     hostBuild.ExecutableName = discovered;
-                } else {
+                }
+                else
+                {
                     entry.ExecutableName = discovered;
                 }
             }
