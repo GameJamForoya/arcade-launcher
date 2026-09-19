@@ -46,7 +46,7 @@ namespace ArcadeLauncher.UI
         [SerializeField] float counterFontScale = 0.8f;
 
         [Header("Key hints")]
-        [Tooltip("Gap between the picture's side edges and the \"◄ Q\" / \"E ►\" arrows that flank it.")]
+        [Tooltip("Gap between the picture's side edges and the Q / E key labels that flank it.")]
         [SerializeField] float imageArrowGap = 16f;
         [Tooltip("Offset of the \"N  Next page\" hint, which hangs below the description's bottom-left corner.")]
         [SerializeField] Vector2 pageHintInset = new(0f, 12f);
@@ -70,9 +70,6 @@ namespace ArcadeLauncher.UI
         const string PreviousImageHintObjectName = "PreviousImageHint";
         const string NextImageHintObjectName = "NextImageHint";
         const string PageHintObjectName = "PageHint";
-        // Same glyph family as the list cursor (►), so the font is known to carry them.
-        const string PreviousArrowGlyph = "◄ ";
-        const string NextArrowGlyph = " ►";
         const string ControlBadgesObjectName = "ControlBadges";
 
         // Control-scheme group names from the input asset, used to pick which binding's display
@@ -332,7 +329,7 @@ namespace ArcadeLauncher.UI
                 _previousImageHint.gameObject.SetActive(hasSeveralImages);
                 if (hasSeveralImages)
                 {
-                    _previousImageHint.text = PreviousArrowGlyph + BindingLabel(_previousImageAction);
+                    _previousImageHint.text = BindingLabel(_previousImageAction);
                 }
             }
             if (_nextImageHint != null)
@@ -340,7 +337,7 @@ namespace ArcadeLauncher.UI
                 _nextImageHint.gameObject.SetActive(hasSeveralImages);
                 if (hasSeveralImages)
                 {
-                    _nextImageHint.text = BindingLabel(_nextImageAction) + NextArrowGlyph;
+                    _nextImageHint.text = BindingLabel(_nextImageAction);
                 }
             }
         }
@@ -440,7 +437,7 @@ namespace ArcadeLauncher.UI
             if (coverImage != null)
             {
                 // The counter is the one overlay left on the art; it is small and Hanna was fine
-                // with it. The Q/E arrows sit in the gutters either side of the picture, where
+                // with it. The Q/E labels sit in the gutters either side of the picture, where
                 // a bright screenshot cannot wash them out.
                 _imageCounter = CreateCounter(ImageCounterObjectName, coverImage.rectTransform,
                     anchor: new Vector2(1f, 1f), pivot: new Vector2(1f, 1f),
