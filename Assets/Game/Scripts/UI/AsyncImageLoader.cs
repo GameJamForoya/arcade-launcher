@@ -48,7 +48,11 @@ namespace ArcadeLauncher.UI
             }
 
             _loading.Add(url);
-            var request = UnityWebRequestTexture.GetTexture(url);
+            // Built from a pre-parsed Uri: UnityWebRequest's string overload re-normalizes the URL
+            // and decodes escapes like %2F/%2B/%23 (itch.zone art hashes contain all three), which
+            // 404s or truncates the request. curl-verified URLs were failing in-game because of this.
+            var request = new UnityWebRequest(
+                new Uri(url), UnityWebRequest.kHttpVerbGET, new DownloadHandlerTexture(true), null);
             var operation = request.SendWebRequest();
             operation.completed += _ =>
             {
