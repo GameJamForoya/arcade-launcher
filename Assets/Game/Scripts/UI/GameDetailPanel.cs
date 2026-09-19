@@ -40,7 +40,7 @@ namespace ArcadeLauncher.UI
         [Tooltip("Inset of the \"2/4\" image counter from the picture's top-right corner, in canvas pixels.")]
         [SerializeField] Vector2 imageCounterInset = new(12f, 8f);
         [Tooltip("Offset of the \"1/3\" page counter, which hangs below the description's bottom-right corner so it never overlaps a full page of text.")]
-        [SerializeField] Vector2 pageCounterInset = new(0f, 4f);
+        [SerializeField] Vector2 pageCounterInset = new(0f, 12f);
         [Tooltip("Counter font size relative to the description text.")]
         [SerializeField] float counterFontScale = 0.8f;
 
@@ -48,9 +48,11 @@ namespace ArcadeLauncher.UI
         [Tooltip("Inset of the \"Q/E  Screenshots\" hint from the picture's top-left corner.")]
         [SerializeField] Vector2 imageHintInset = new(12f, 8f);
         [Tooltip("Offset of the \"N  Next page\" hint, which hangs below the description's bottom-left corner.")]
-        [SerializeField] Vector2 pageHintInset = new(0f, 4f);
-        [SerializeField] string imageHintAction = "Screenshots";
-        [SerializeField] string pageHintAction = "Next page";
+        [SerializeField] Vector2 pageHintInset = new(0f, 12f);
+        [SerializeField] string imageHintAction = "Next Image";
+        [SerializeField] string pageHintAction = "Read More";
+        [Tooltip("Colour for hints and counters, dimmer than the description so they read as chrome, not content.")]
+        [SerializeField] Color hintColor = new(0.64f, 0.64f, 0.64f, 1f);
 
         // How often the shown percent is refreshed while the current entry is Downloading.
         // GetProgress is cheap, but there is no need to touch the TMP text every frame.
@@ -73,7 +75,7 @@ namespace ArcadeLauncher.UI
         // string a hint shows ("Q/E" on keyboard, "LB/RB" on a pad).
         const string KeyboardSchemeGroup = "Keyboard&Mouse";
         const string GamepadSchemeGroup = "Gamepad";
-        const string HintKeyActionSeparator = "  ";
+        const string HintKeyActionSeparator = ": ";
         const string HintKeyPairSeparator = "/";
         const int FirstPage = 1;
 
@@ -464,7 +466,7 @@ namespace ArcadeLauncher.UI
             var counter = counterObject.GetComponent<TextMeshProUGUI>();
             counter.font = descriptionText.font;
             counter.fontSharedMaterial = descriptionText.fontSharedMaterial;
-            counter.color = descriptionText.color;
+            counter.color = hintColor;
             counter.fontSize = descriptionText.fontSize * counterFontScale;
             counter.alignment = alignment;
             counter.enableWordWrapping = false;
