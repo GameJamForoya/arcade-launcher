@@ -21,7 +21,6 @@ $PlayerExe = Join-Path $CheckRoot 'Build\ArcadeLauncher.exe'
 $BuildLog = Join-Path $CheckRoot 'build.log'
 $WindowWidth = 1600
 $WindowHeight = 900
-$ForegroundSettleMilliseconds = 500
 
 if (-not $SkipBuild -or -not (Test-Path $PlayerExe)) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'compile-check.ps1')
@@ -43,12 +42,15 @@ using System; using System.Runtime.InteropServices;
 public class ScreenshotNative {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 }
 '@
-# Without this, GetWindowRect and CopyFromScreen disagree on a scaled display and the capture is offset.
+# Without this, GetWindowRect reports scaled coordinates on a HiDPI display and the bitmap is the wrong size.
 [ScreenshotNative]::SetProcessDPIAware() | Out-Null
+# PW_RENDERFULLCONTENT: ask DWM for the window's own composed surface, so the capture is correct even
+# when another window (typically the Unity editor) is in front, and no focus is stolen from the user.
+$PrintWindowRenderFullContent = 0x2
 
 $player = Start-Process -FilePath $PlayerExe -PassThru -ArgumentList @(
     '-screen-fullscreen', '0', '-screen-width', $WindowWidth, '-screen-height', $WindowHeight)
@@ -56,8 +58,6 @@ try {
     Start-Sleep -Seconds $WaitSeconds
     $player.Refresh()
     $handle = $player.MainWindowHandle
-    [ScreenshotNative]::SetForegroundWindow($handle) | Out-Null
-    Start-Sleep -Milliseconds $ForegroundSettleMilliseconds
 
     $rect = New-Object ScreenshotNative+RECT
     [ScreenshotNative]::GetWindowRect($handle, [ref]$rect) | Out-Null
@@ -66,7 +66,10 @@ try {
 
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen($rect.L, $rect.T, 0, 0, $bitmap.Size)
+    $deviceContext = $graphics.GetHdc()
+    $printed = [ScreenshotNative]::PrintWindow($handle, $deviceContext, $PrintWindowRenderFullContent)
+    $graphics.ReleaseHdc($deviceContext)
+    if (-not $printed) { throw "PrintWindow failed for the player window." }
     $resolved = [System.IO.Path]::GetFullPath($OutFile)
     $bitmap.Save($resolved, [System.Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose()

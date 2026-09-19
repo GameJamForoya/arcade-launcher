@@ -27,8 +27,8 @@ namespace ArcadeLauncher.UI
 
         [Header("Control badges")]
         [SerializeField] ControlIconSet controlIcons;
-        [SerializeField] float controlIconSize = 32f;
-        [SerializeField] float controlIconSpacing = 10f;
+        [SerializeField] float controlIconSize = 48f;
+        [SerializeField] float controlIconSpacing = 12f;
         [Tooltip("Inset of the badge strip from the picture's bottom-right corner.")]
         [SerializeField] Vector2 controlIconInset = new(12f, 8f);
         [Tooltip("Padding between the badges and the edge of their backing box.")]
@@ -39,10 +39,18 @@ namespace ArcadeLauncher.UI
         [Header("Counters")]
         [Tooltip("Inset of the \"2/4\" image counter from the picture's top-right corner, in canvas pixels.")]
         [SerializeField] Vector2 imageCounterInset = new(12f, 8f);
-        [Tooltip("Inset of the \"1/3\" page counter from the description's bottom-right corner.")]
-        [SerializeField] Vector2 pageCounterInset = new(0f, 0f);
+        [Tooltip("Offset of the \"1/3\" page counter, which hangs below the description's bottom-right corner so it never overlaps a full page of text.")]
+        [SerializeField] Vector2 pageCounterInset = new(0f, 4f);
         [Tooltip("Counter font size relative to the description text.")]
         [SerializeField] float counterFontScale = 0.8f;
+
+        [Header("Key hints")]
+        [Tooltip("Inset of the \"Q/E  Screenshots\" hint from the picture's top-left corner.")]
+        [SerializeField] Vector2 imageHintInset = new(12f, 8f);
+        [Tooltip("Offset of the \"N  Next page\" hint, which hangs below the description's bottom-left corner.")]
+        [SerializeField] Vector2 pageHintInset = new(0f, 4f);
+        [SerializeField] string imageHintAction = "Screenshots";
+        [SerializeField] string pageHintAction = "Next page";
 
         // How often the shown percent is refreshed while the current entry is Downloading.
         // GetProgress is cheap, but there is no need to touch the TMP text every frame.
@@ -57,7 +65,16 @@ namespace ArcadeLauncher.UI
 
         const string ImageCounterObjectName = "ImageCounter";
         const string PageCounterObjectName = "PageCounter";
+        const string ImageHintObjectName = "ImageHint";
+        const string PageHintObjectName = "PageHint";
         const string ControlBadgesObjectName = "ControlBadges";
+
+        // Control-scheme group names from the input asset, used to pick which binding's display
+        // string a hint shows ("Q/E" on keyboard, "LB/RB" on a pad).
+        const string KeyboardSchemeGroup = "Keyboard&Mouse";
+        const string GamepadSchemeGroup = "Gamepad";
+        const string HintKeyActionSeparator = "  ";
+        const string HintKeyPairSeparator = "/";
         const int FirstPage = 1;
 
         IDownloadManager _downloadManager;
@@ -70,6 +87,9 @@ namespace ArcadeLauncher.UI
         string _requestedImageUrl;
         TextMeshProUGUI _imageCounter;
         TextMeshProUGUI _pageCounter;
+        TextMeshProUGUI _imageHint;
+        TextMeshProUGUI _pageHint;
+        bool _hintsShowGamepad;
         RectTransform _controlBadges;
 
         InputAction _previousImageAction;
@@ -89,6 +109,10 @@ namespace ArcadeLauncher.UI
             if (_previousImageAction != null) _previousImageAction.performed += OnPreviousImagePerformed;
             if (_nextImageAction != null) _nextImageAction.performed += OnNextImagePerformed;
             if (_nextPageAction != null) _nextPageAction.performed += OnNextPagePerformed;
+
+            // Hints read their labels from the actions, which only exist from here on.
+            UpdateImageCounter();
+            UpdatePageCounter();
         }
 
         void OnEnable()
@@ -110,6 +134,8 @@ namespace ArcadeLauncher.UI
 
         void Update()
         {
+            RefreshHintsIfDeviceChanged();
+
             if (_downloadManager == null || _shownEntry == null) return;
             if (_downloadManager.GetState(_shownEntry.Id) != GameInstallState.Downloading) return;
 
@@ -286,12 +312,22 @@ namespace ArcadeLauncher.UI
 
         void UpdateImageCounter()
         {
-            if (_imageCounter == null) return;
             bool hasSeveralImages = _imageUrls.Count > 1;
-            _imageCounter.gameObject.SetActive(hasSeveralImages);
-            if (hasSeveralImages)
+            if (_imageCounter != null)
             {
-                _imageCounter.text = $"{_imageIndex + 1}/{_imageUrls.Count}";
+                _imageCounter.gameObject.SetActive(hasSeveralImages);
+                if (hasSeveralImages)
+                {
+                    _imageCounter.text = $"{_imageIndex + 1}/{_imageUrls.Count}";
+                }
+            }
+            if (_imageHint != null)
+            {
+                _imageHint.gameObject.SetActive(hasSeveralImages);
+                if (hasSeveralImages)
+                {
+                    _imageHint.text = BuildPairHint(_previousImageAction, _nextImageAction, imageHintAction);
+                }
             }
         }
 
@@ -324,14 +360,67 @@ namespace ArcadeLauncher.UI
 
         void UpdatePageCounter()
         {
-            if (_pageCounter == null) return;
             int pageCount = CurrentPageCount();
             bool hasSeveralPages = pageCount > 1;
-            _pageCounter.gameObject.SetActive(hasSeveralPages);
-            if (hasSeveralPages)
+            if (_pageCounter != null)
             {
-                _pageCounter.text = $"{descriptionText.pageToDisplay}/{pageCount}";
+                _pageCounter.gameObject.SetActive(hasSeveralPages);
+                if (hasSeveralPages)
+                {
+                    _pageCounter.text = $"{descriptionText.pageToDisplay}/{pageCount}";
+                }
             }
+            if (_pageHint != null)
+            {
+                _pageHint.gameObject.SetActive(hasSeveralPages);
+                if (hasSeveralPages)
+                {
+                    _pageHint.text = BuildSingleHint(_nextPageAction, pageHintAction);
+                }
+            }
+        }
+
+        // ---- Key hints -----------------------------------------------------------------------
+
+        // "Q/E  Screenshots" on keyboard, "LB/RB  Screenshots" on a pad. Labels come from the
+        // bindings themselves, so a rebind in the input asset changes the hint for free.
+        string BuildPairHint(InputAction previous, InputAction next, string actionLabel)
+        {
+            string keys = BindingLabel(previous) + HintKeyPairSeparator + BindingLabel(next);
+            return keys + HintKeyActionSeparator + actionLabel;
+        }
+
+        string BuildSingleHint(InputAction action, string actionLabel)
+        {
+            return BindingLabel(action) + HintKeyActionSeparator + actionLabel;
+        }
+
+        string BindingLabel(InputAction action)
+        {
+            if (action == null) return "?";
+            string group = _hintsShowGamepad ? GamepadSchemeGroup : KeyboardSchemeGroup;
+            string label = action.GetBindingDisplayString(InputBinding.MaskByGroup(group));
+            return string.IsNullOrEmpty(label) ? "?" : label;
+        }
+
+        // A pad that was touched more recently than the keyboard switches the hints to pad labels.
+        void RefreshHintsIfDeviceChanged()
+        {
+            bool gamepadIsLatest = IsGamepadMostRecentDevice();
+            if (gamepadIsLatest == _hintsShowGamepad) return;
+
+            _hintsShowGamepad = gamepadIsLatest;
+            UpdateImageCounter();
+            UpdatePageCounter();
+        }
+
+        static bool IsGamepadMostRecentDevice()
+        {
+            Gamepad gamepad = Gamepad.current;
+            if (gamepad == null) return false;
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null) return true;
+            return gamepad.lastUpdateTime > keyboard.lastUpdateTime;
         }
 
         // ---- Counters (built in code so the scene stays as authored) -------------------------
@@ -342,21 +431,33 @@ namespace ArcadeLauncher.UI
 
             if (coverImage != null)
             {
+                // Picture overlays sit inside the picture's corners (pivot = anchor).
                 _imageCounter = CreateCounter(ImageCounterObjectName, coverImage.rectTransform,
-                    anchor: new Vector2(1f, 1f), offset: new Vector2(-imageCounterInset.x, -imageCounterInset.y));
+                    anchor: new Vector2(1f, 1f), pivot: new Vector2(1f, 1f),
+                    offset: new Vector2(-imageCounterInset.x, -imageCounterInset.y), TextAlignmentOptions.TopRight);
+                _imageHint = CreateCounter(ImageHintObjectName, coverImage.rectTransform,
+                    anchor: new Vector2(0f, 1f), pivot: new Vector2(0f, 1f),
+                    offset: new Vector2(imageHintInset.x, -imageHintInset.y), TextAlignmentOptions.TopLeft);
             }
+            // Description labels hang below the box (pivot on their top edge): a full page of text
+            // reaches the bottom of the rect, so anything inside it would collide with the last line.
             _pageCounter = CreateCounter(PageCounterObjectName, descriptionText.rectTransform,
-                anchor: new Vector2(1f, 0f), offset: new Vector2(-pageCounterInset.x, pageCounterInset.y));
+                anchor: new Vector2(1f, 0f), pivot: new Vector2(1f, 1f),
+                offset: new Vector2(-pageCounterInset.x, -pageCounterInset.y), TextAlignmentOptions.TopRight);
+            _pageHint = CreateCounter(PageHintObjectName, descriptionText.rectTransform,
+                anchor: new Vector2(0f, 0f), pivot: new Vector2(0f, 1f),
+                offset: new Vector2(pageHintInset.x, -pageHintInset.y), TextAlignmentOptions.TopLeft);
         }
 
-        TextMeshProUGUI CreateCounter(string objectName, RectTransform parent, Vector2 anchor, Vector2 offset)
+        TextMeshProUGUI CreateCounter(string objectName, RectTransform parent, Vector2 anchor, Vector2 pivot,
+            Vector2 offset, TextAlignmentOptions alignment)
         {
             var counterObject = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
             var rect = counterObject.GetComponent<RectTransform>();
             rect.SetParent(parent, worldPositionStays: false);
             rect.anchorMin = anchor;
             rect.anchorMax = anchor;
-            rect.pivot = anchor;
+            rect.pivot = pivot;
             rect.anchoredPosition = offset;
             rect.sizeDelta = Vector2.zero;
 
@@ -365,7 +466,7 @@ namespace ArcadeLauncher.UI
             counter.fontSharedMaterial = descriptionText.fontSharedMaterial;
             counter.color = descriptionText.color;
             counter.fontSize = descriptionText.fontSize * counterFontScale;
-            counter.alignment = TextAlignmentOptions.TopRight;
+            counter.alignment = alignment;
             counter.enableWordWrapping = false;
             counter.overflowMode = TextOverflowModes.Overflow;
             counter.raycastTarget = false;
