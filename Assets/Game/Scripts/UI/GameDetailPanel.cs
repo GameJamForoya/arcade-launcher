@@ -342,9 +342,9 @@ namespace ArcadeLauncher.UI
                 ShowLoading();
             }
 
-            // The loader drops duplicate in-flight requests for a URL and only calls the first
-            // subscriber, so the callbacks check the URL (not a request id): flipping away and back
-            // to a still-loading image must still land when that first request completes.
+            // The loader calls back every subscriber when a url settles, so the callbacks check the
+            // URL (not a request id): flipping away and back to a still-loading image must land
+            // exactly once, on the request that is current when it completes.
             AsyncImageLoader.LoadImage(url, sprite => OnImageLoaded(url, sprite), () => OnImageFailed(url));
         }
 

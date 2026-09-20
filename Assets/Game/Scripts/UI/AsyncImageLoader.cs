@@ -19,7 +19,21 @@ namespace ArcadeLauncher.UI
         const string CachedImageExtension = ".png";
 
         static readonly Dictionary<string, Sprite> _cache = new();
-        static readonly HashSet<string> _loading = new();
+        // Every caller waiting on an in-flight url. A second request for the same url joins the
+        // list instead of being dropped, so a panel rebuilt mid-fetch still gets its callback.
+        static readonly Dictionary<string, List<ImageSubscriber>> _subscribersByUrl = new();
+
+        readonly struct ImageSubscriber
+        {
+            public ImageSubscriber(Action<Sprite> onLoaded, Action onFailed)
+            {
+                OnLoaded = onLoaded;
+                OnFailed = onFailed;
+            }
+
+            public Action<Sprite> OnLoaded { get; }
+            public Action OnFailed { get; }
+        }
 
         /// <summary>True when <paramref name="url"/> would call back synchronously from memory.</summary>
         public static bool IsCached(string url)
@@ -31,8 +45,8 @@ namespace ArcadeLauncher.UI
         /// Calls back with a sprite for <paramref name="url"/>. Memory hits call back synchronously;
         /// disk-cache hits and downloads call back on a later frame, always on the main thread.
         /// Failures are logged and reported through <paramref name="onFailed"/> (never both).
-        /// Only the first caller for an in-flight url is called back. Must be called from the
-        /// main thread.
+        /// Every caller for an in-flight url is called back when it settles. Must be called from
+        /// the main thread.
         /// </summary>
         public static void LoadImage(string url, Action<Sprite> onLoaded, Action onFailed = null)
         {
@@ -48,8 +62,9 @@ namespace ArcadeLauncher.UI
                 return;
             }
 
-            if (_loading.Contains(url))
+            if (_subscribersByUrl.TryGetValue(url, out List<ImageSubscriber> inFlight))
             {
+                inFlight.Add(new ImageSubscriber(onLoaded, onFailed));
                 return;
             }
 
@@ -65,8 +80,8 @@ namespace ArcadeLauncher.UI
                 return;
             }
 
-            _loading.Add(url);
-            ObserveFaults(LoadAsync(url, parsedUrl, onLoaded, onFailed));
+            _subscribersByUrl[url] = new List<ImageSubscriber> { new ImageSubscriber(onLoaded, onFailed) };
+            ObserveFaults(LoadAsync(url, parsedUrl));
         }
 
         public static void ClearCache()
@@ -87,9 +102,9 @@ namespace ArcadeLauncher.UI
 
         // Runs on the main thread between awaits: Unity's SynchronizationContext resumes every
         // continuation there, so only the Task.Run bodies below execute on worker threads.
-        static async Task LoadAsync(string url, Uri parsedUrl, Action<Sprite> onLoaded, Action onFailed)
+        static async Task LoadAsync(string url, Uri parsedUrl)
         {
-            bool isPublished = false;
+            Sprite result = null;
             try
             {
                 // Remote art (catalogs fetched from Drive carry https cover urls) is mirrored to disk so
@@ -100,8 +115,7 @@ namespace ArcadeLauncher.UI
                     Sprite diskCached = await TryLoadFromDiskCacheAsync(url);
                     if (diskCached != null)
                     {
-                        Publish(url, diskCached, onLoaded);
-                        isPublished = true;
+                        result = diskCached;
                         return;
                     }
                 }
@@ -112,10 +126,10 @@ namespace ArcadeLauncher.UI
                     return;
                 }
 
-                Sprite sprite = CreateSprite(texture);
-                Publish(url, sprite, onLoaded);
-                isPublished = true;
-
+                result = CreateSprite(texture);
+                // Subscribers see the picture before the cache write starts, so caching never
+                // delays it. Settle() has already run by the time this await resumes.
+                Settle(url, result);
                 if (isRemote)
                 {
                     await TryWriteToDiskCacheAsync(url, texture);
@@ -123,20 +137,40 @@ namespace ArcadeLauncher.UI
             }
             finally
             {
-                _loading.Remove(url);
-                if (!isPublished)
-                {
-                    onFailed?.Invoke();
-                }
+                // Idempotent: the download path settles early, the disk and failure paths settle here.
+                Settle(url, result);
             }
         }
 
-        static void Publish(string url, Sprite sprite, Action<Sprite> onLoaded)
+        // Caches the result (or nothing on failure), releases the url, then notifies every waiting
+        // caller exactly once. The cache and in-flight set are updated before any callback runs, so
+        // a throwing subscriber cannot leave the url stuck or trigger the failure callbacks, and a
+        // LoadImage call from inside a callback returns synchronously.
+        static void Settle(string url, Sprite sprite)
         {
-            _cache[url] = sprite;
-            // The url stays in _loading until the finally block, but the memory cache is already
-            // populated, so a LoadImage call from inside the callback returns synchronously.
-            onLoaded?.Invoke(sprite);
+            if (!_subscribersByUrl.TryGetValue(url, out List<ImageSubscriber> subscribers))
+            {
+                return;
+            }
+            _subscribersByUrl.Remove(url);
+
+            bool isSuccess = sprite != null;
+            if (isSuccess)
+            {
+                _cache[url] = sprite;
+            }
+
+            foreach (ImageSubscriber subscriber in subscribers)
+            {
+                if (isSuccess)
+                {
+                    subscriber.OnLoaded?.Invoke(sprite);
+                }
+                else
+                {
+                    subscriber.OnFailed?.Invoke();
+                }
+            }
         }
 
         static Task<Texture2D> DownloadTextureAsync(string url, Uri parsedUrl)
@@ -262,7 +296,7 @@ namespace ArcadeLauncher.UI
         }
 
         // Fire-and-forget with the fault surfaced: an unobserved exception inside an async load
-        // would otherwise vanish silently and leave the url stuck in _loading.
+        // would otherwise vanish silently.
         static async void ObserveFaults(Task task)
         {
             try

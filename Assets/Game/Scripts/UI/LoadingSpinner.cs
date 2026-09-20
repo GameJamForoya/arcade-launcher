@@ -20,6 +20,9 @@ namespace ArcadeLauncher.UI
         private RectTransform _rect;
         private Image _image;
         private float _degreesPerSecond;
+        // Only the ring this component drew is destroyed with it; a sprite asset swapped in from
+        // the project must be left alone.
+        private bool _ownsProceduralSprite;
 
         public static LoadingSpinner Attach(RectTransform parent, float size, Color color,
             float revolutionsPerSecond, float ringThicknessFraction, float gapDegrees)
@@ -36,6 +39,7 @@ namespace ArcadeLauncher.UI
 
             spinner._image = spinnerObject.GetComponent<Image>();
             spinner._image.sprite = CreateRingSprite(ringThicknessFraction, gapDegrees);
+            spinner._ownsProceduralSprite = true;
             spinner._image.color = color;
             spinner._image.raycastTarget = false;
             spinner._image.preserveAspect = true;
@@ -62,15 +66,33 @@ namespace ArcadeLauncher.UI
             _rect.Rotate(0f, 0f, _degreesPerSecond * Time.unscaledDeltaTime);
         }
 
+        /// <summary>Replaces the procedural ring with a designed sprite; the ring is released.</summary>
+        public void SetSprite(Sprite designedSprite)
+        {
+            if (designedSprite == null)
+            {
+                return;
+            }
+            ReleaseProceduralSprite();
+            _image.sprite = designedSprite;
+        }
+
         private void OnDestroy()
         {
-            bool ownsProceduralSprite = _image != null && _image.sprite != null;
-            if (!ownsProceduralSprite)
+            ReleaseProceduralSprite();
+        }
+
+        private void ReleaseProceduralSprite()
+        {
+            bool hasRingToRelease = _ownsProceduralSprite && _image != null && _image.sprite != null;
+            if (!hasRingToRelease)
             {
+                _ownsProceduralSprite = false;
                 return;
             }
             Destroy(_image.sprite.texture);
             Destroy(_image.sprite);
+            _ownsProceduralSprite = false;
         }
 
         // Outer circle with a hole: alpha is 1 between the inner and outer radius, feathered over
