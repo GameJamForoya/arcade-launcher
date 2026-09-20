@@ -67,6 +67,15 @@ namespace ArcadeLauncher.UI
         [SerializeField] float uninstallBarGap = 4f;
         [SerializeField] Color uninstallBarTrackColor = new(1f, 1f, 1f, 0.15f);
 
+        [Header("Loading spinner (placeholder until the designed icon lands)")]
+        [SerializeField] float spinnerSize = 64f;
+        [SerializeField] Color spinnerColor = new(0.64f, 0.64f, 0.64f, 1f);
+        [SerializeField] float spinnerRevolutionsPerSecond = 0.8f;
+        [Tooltip("Ring thickness as a fraction of the outer radius (0 = hairline, 1 = solid disc).")]
+        [SerializeField] float spinnerRingThickness = 0.25f;
+        [Tooltip("Size of the open segment in degrees, so the spin is visible.")]
+        [SerializeField] float spinnerGapDegrees = 80f;
+
         // How often the shown percent is refreshed while the current entry is Downloading.
         // GetProgress is cheap, but there is no need to touch the TMP text every frame.
         const float DownloadProgressRefreshIntervalSeconds = 0.2f;
@@ -122,6 +131,7 @@ namespace ArcadeLauncher.UI
         TextMeshProUGUI _pageHint;
         bool _hintsShowGamepad;
         RectTransform _controlBadges;
+        LoadingSpinner _loadingSpinner;
 
         InputAction _previousImageAction;
         InputAction _nextImageAction;
@@ -145,6 +155,7 @@ namespace ArcadeLauncher.UI
             CreateCounters();
             CreateControlBadgeStrip();
             CreateHintBar();
+            CreateLoadingSpinner();
         }
 
         void Start()
@@ -215,7 +226,7 @@ namespace ArcadeLauncher.UI
                 if (descriptionText != null) descriptionText.text = "";
                 if (playPrompt != null) playPrompt.gameObject.SetActive(false);
                 if (coverImage != null) coverImage.enabled = false;
-                if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
+                ShowNoSignal();
                 ClearImages();
                 UpdatePageCounter();
                 ShowControlBadges(null);
@@ -299,7 +310,7 @@ namespace ArcadeLauncher.UI
             _imageIndex = 0;
             _requestedImageUrl = null;
             _localCoverSprite = null;
-            ShowPlaceholder();
+            ShowNoSignal();
             UpdateImageCounter();
         }
 
@@ -322,33 +333,63 @@ namespace ArcadeLauncher.UI
                 return;
             }
 
-            // Show the placeholder until this image arrives. The loader never calls back on a
-            // failed fetch, so leaving the previous picture up would label it with the wrong index.
-            // Cached images call back synchronously, so there is no flash for those.
-            ShowPlaceholder();
+            // Memory hits call back synchronously, so only a disk read or a download shows the
+            // spinner. Failures land on NO SIGNAL through the failure callback; leaving the previous
+            // picture up would label it with the wrong index.
+            bool isFetchInFlight = !AsyncImageLoader.IsCached(url);
+            if (isFetchInFlight)
+            {
+                ShowLoading();
+            }
 
             // The loader drops duplicate in-flight requests for a URL and only calls the first
-            // subscriber, so the callback checks the URL (not a request id): flipping away and back
+            // subscriber, so the callbacks check the URL (not a request id): flipping away and back
             // to a still-loading image must still land when that first request completes.
-            AsyncImageLoader.LoadImage(url, sprite => OnImageLoaded(url, sprite));
+            AsyncImageLoader.LoadImage(url, sprite => OnImageLoaded(url, sprite), () => OnImageFailed(url));
         }
 
-        void ShowPlaceholder()
+        // Spinner over an empty frame while a fetch is in flight.
+        void ShowLoading()
+        {
+            HideCover();
+            if (coverPlaceholder != null) coverPlaceholder.SetActive(false);
+            if (_loadingSpinner != null) _loadingSpinner.Show();
+        }
+
+        // The NO SIGNAL card: nothing to show and nothing on the way.
+        void ShowNoSignal()
+        {
+            HideCover();
+            if (_loadingSpinner != null) _loadingSpinner.Hide();
+            if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
+        }
+
+        void HideCover()
         {
             if (coverImage != null)
             {
                 coverImage.sprite = null;
                 coverImage.enabled = false;
             }
-            if (coverPlaceholder != null) coverPlaceholder.SetActive(true);
         }
 
         void OnImageLoaded(string url, Sprite sprite)
         {
             if (this == null) return;
-            bool isStillWanted = string.Equals(url, _requestedImageUrl, System.StringComparison.Ordinal);
-            if (!isStillWanted) return;
+            if (!IsStillWanted(url)) return;
             ApplyCover(sprite);
+        }
+
+        void OnImageFailed(string url)
+        {
+            if (this == null) return;
+            if (!IsStillWanted(url)) return;
+            ShowNoSignal();
+        }
+
+        bool IsStillWanted(string url)
+        {
+            return string.Equals(url, _requestedImageUrl, System.StringComparison.Ordinal);
         }
 
         void OnPreviousImagePerformed(InputAction.CallbackContext context)
@@ -670,6 +711,14 @@ namespace ArcadeLauncher.UI
             barObject.SetActive(false);
         }
 
+        // Centred on the picture frame. Procedural ring for now; see LoadingSpinner for the swap.
+        void CreateLoadingSpinner()
+        {
+            if (coverImage == null) return;
+            _loadingSpinner = LoadingSpinner.Attach(coverImage.rectTransform, spinnerSize, spinnerColor,
+                spinnerRevolutionsPerSecond, spinnerRingThickness, spinnerGapDegrees);
+        }
+
         // A thin track under the Uninstall text with a fill that grows while the key is held.
         void CreateUninstallBar()
         {
@@ -849,6 +898,7 @@ namespace ArcadeLauncher.UI
             if (this == null || coverImage == null || sprite == null) return;
             coverImage.sprite = sprite;
             coverImage.enabled = true;
+            if (_loadingSpinner != null) _loadingSpinner.Hide();
             if (coverPlaceholder != null) coverPlaceholder.SetActive(false);
         }
 

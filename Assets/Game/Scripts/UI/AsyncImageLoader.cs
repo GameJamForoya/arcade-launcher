@@ -21,15 +21,24 @@ namespace ArcadeLauncher.UI
         static readonly Dictionary<string, Sprite> _cache = new();
         static readonly HashSet<string> _loading = new();
 
+        /// <summary>True when <paramref name="url"/> would call back synchronously from memory.</summary>
+        public static bool IsCached(string url)
+        {
+            return !string.IsNullOrEmpty(url) && _cache.ContainsKey(url);
+        }
+
         /// <summary>
         /// Calls back with a sprite for <paramref name="url"/>. Memory hits call back synchronously;
         /// disk-cache hits and downloads call back on a later frame, always on the main thread.
-        /// Failures are logged and never call back. Must be called from the main thread.
+        /// Failures are logged and reported through <paramref name="onFailed"/> (never both).
+        /// Only the first caller for an in-flight url is called back. Must be called from the
+        /// main thread.
         /// </summary>
-        public static void LoadImage(string url, Action<Sprite> onLoaded)
+        public static void LoadImage(string url, Action<Sprite> onLoaded, Action onFailed = null)
         {
             if (string.IsNullOrEmpty(url))
             {
+                onFailed?.Invoke();
                 return;
             }
 
@@ -52,11 +61,12 @@ namespace ArcadeLauncher.UI
             if (!isAbsoluteHttpUrl)
             {
                 Debug.LogWarning($"{LogPrefix} Not a loadable image url: '{url}'");
+                onFailed?.Invoke();
                 return;
             }
 
             _loading.Add(url);
-            ObserveFaults(LoadAsync(url, parsedUrl, onLoaded));
+            ObserveFaults(LoadAsync(url, parsedUrl, onLoaded, onFailed));
         }
 
         public static void ClearCache()
@@ -77,8 +87,9 @@ namespace ArcadeLauncher.UI
 
         // Runs on the main thread between awaits: Unity's SynchronizationContext resumes every
         // continuation there, so only the Task.Run bodies below execute on worker threads.
-        static async Task LoadAsync(string url, Uri parsedUrl, Action<Sprite> onLoaded)
+        static async Task LoadAsync(string url, Uri parsedUrl, Action<Sprite> onLoaded, Action onFailed)
         {
+            bool isPublished = false;
             try
             {
                 // Remote art (catalogs fetched from Drive carry https cover urls) is mirrored to disk so
@@ -90,6 +101,7 @@ namespace ArcadeLauncher.UI
                     if (diskCached != null)
                     {
                         Publish(url, diskCached, onLoaded);
+                        isPublished = true;
                         return;
                     }
                 }
@@ -102,6 +114,7 @@ namespace ArcadeLauncher.UI
 
                 Sprite sprite = CreateSprite(texture);
                 Publish(url, sprite, onLoaded);
+                isPublished = true;
 
                 if (isRemote)
                 {
@@ -111,6 +124,10 @@ namespace ArcadeLauncher.UI
             finally
             {
                 _loading.Remove(url);
+                if (!isPublished)
+                {
+                    onFailed?.Invoke();
+                }
             }
         }
 
